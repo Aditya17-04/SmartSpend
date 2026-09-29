@@ -3,43 +3,33 @@ import { FinanceProvider } from './context/FinanceContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Sidebar, type PageId } from './components/layout/Sidebar';
 import { LandingPage } from './pages/auth/LandingPage';
-import { Login } from './pages/auth/Login';
-import { Register } from './pages/auth/Register';
-import { Dashboard } from './pages/Dashboard';
-import { Register as RegisterPage } from './pages/Register';
-import { Spending }  from './pages/Spending';
-import { Accounts }  from './pages/Accounts';
-import { Alerts }    from './pages/Alerts';
-import { Insights }  from './pages/Insights';
-import { Budgets }   from './pages/Budgets';
-import { Trends }    from './pages/Trends';
-import { Goals }     from './pages/Goals';
-import { Reports }   from './pages/Reports';
-import { RecurringPage } from './pages/RecurringPage';
-import { Settings }  from './pages/Settings';
-import { ChatWidget } from './components/chat/ChatWidget';
+import { Login }       from './pages/auth/Login';
+import { Register }    from './pages/auth/Register';
+import { Dashboard }   from './pages/Dashboard';
+import { Register as ExpensesPage } from './pages/Register';
+import { Budgets }     from './pages/Budgets';
+import { Insights }    from './pages/Insights';
+import { AskSmartSpend } from './pages/AskSmartSpend';
+import { Settings as ProfilePage } from './pages/Settings';
+import { ParentDashboard } from './pages/ParentDashboard';
 
-const PAGES: Record<PageId, React.ComponentType> = {
-  dashboard: Dashboard,
-  register:  RegisterPage,
-  accounts:  Accounts,
-  alerts:    Alerts,
-  insights:  Insights,
-  budgets:   Budgets,
-  trends:    Trends,
-  goals:     Goals,
-  reports:   Reports,
-  recurring: RecurringPage,
-  settings:  Settings,
+const PAGES: Record<PageId, React.ComponentType<any>> = {
+  dashboard:        Dashboard,
+  expenses:         ExpensesPage,
+  budget:           Budgets,
+  insights:         Insights,
+  ask:              AskSmartSpend,
+  profile:          ProfilePage,
+  parentDashboard:  ParentDashboard,
 };
 
 function AppContent() {
   const { isAuthenticated } = useAuth();
-  const [activePage, setActivePage] = useState<PageId>('dashboard');
+  const [activePage, setActivePage] = useState<PageId>('expenses');
   const [authView, setAuthView] = useState<'landing' | 'login' | 'register'>('landing');
 
   if (!isAuthenticated) {
-    if (authView === 'login') return <Login onBack={() => setAuthView('landing')} onRegister={() => setAuthView('register')} />;
+    if (authView === 'login')    return <Login    onBack={() => setAuthView('landing')} onRegister={() => setAuthView('register')} />;
     if (authView === 'register') return <Register onBack={() => setAuthView('landing')} onLogin={() => setAuthView('login')} />;
     return <LandingPage onLogin={() => setAuthView('login')} onRegister={() => setAuthView('register')} />;
   }
@@ -47,14 +37,13 @@ function AppContent() {
   const ActivePage = PAGES[activePage];
 
   return (
-    <div className="min-h-screen bg-navy-950 text-white font-sans flex">
+    <div className="min-h-screen bg-[#111113] text-white font-sans flex">
       <Sidebar activePage={activePage} onNavigate={setActivePage} />
-      <main className="flex-1 min-w-0 min-h-screen">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-7">
-          <ActivePage />
+      <main className="flex-1 min-w-0 min-h-screen pb-20 lg:pb-0">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-7">
+          <ActivePage onNavigate={setActivePage} />
         </div>
       </main>
-      <ChatWidget />
     </div>
   );
 }

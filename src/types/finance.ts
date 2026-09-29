@@ -1,21 +1,6 @@
-export type Category =
-  | 'Food & Dining'
-  | 'Transport'
-  | 'Shopping'
-  | 'Entertainment'
-  | 'Bills & Utilities'
-  | 'Health'
-  | 'Travel'
-  | 'Education'
-  | 'Salary'
-  | 'Freelance'
-  | 'Investment'
-  | 'Rent'
-  | 'Groceries'
-  | 'Insurance'
-  | 'Other';
+export type Category = string;
 
-export type AccountType = 'savings' | 'salary' | 'credit' | 'wallet' | 'investment' | 'loan';
+export type AccountType = 'cash' | 'upi';
 export type TransactionType = 'debit' | 'credit';
 export type TransactionStatus = 'pending' | 'cleared' | 'reconciled';
 export type AlertSeverity = 'info' | 'warning' | 'critical';

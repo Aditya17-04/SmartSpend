@@ -1,247 +1,232 @@
-import { motion } from 'framer-motion';
-import { RadialBarChart, RadialBar, ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
-import { Plus, ArrowRight } from 'lucide-react';
 import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { ArrowUpRight, ArrowDownLeft, TrendingUp, Zap, Eye, EyeOff, ChevronRight } from 'lucide-react';
+import {
+  AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip,
+} from 'recharts';
 import { useFinance } from '../context/FinanceContext';
-import { StatCard } from '../components/shared/StatCard';
-import { TransactionRow } from '../components/shared/TransactionRow';
-import { AddTransactionModal } from '../components/shared/AddTransactionModal';
+import { formatCurrency, CATEGORY_ICONS, CATEGORY_COLORS } from '../lib/utils';
 import { EmptyState } from '../components/shared/EmptyState';
-import { formatCurrency } from '../lib/utils';
 
-const RADIAN = Math.PI / 180;
+const ITEM = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35 } },
+};
+const CONTAINER = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07 } },
+};
 
 export function Dashboard() {
   const {
-    totalBalance, thisMonthIncome, thisMonthSpent, thisMonthSaved,
-    lastMonthSpent, recentTransactions, categorySpends, budgetScore, state, hasData,
+    state, hasData, totalBalance, thisMonthIncome, thisMonthSpent,
+    categorySpends, recentTransactions, categoryBudgetStatus,
   } = useFinance();
-  const [modalOpen, setModalOpen] = useState(false);
+
+  const [balanceVisible, setBalanceVisible] = useState(true);
 
   if (!hasData) {
     return (
-      <EmptyState 
-        icon="👋" 
-        title="Welcome to Wellsy!" 
-        description="Connect your first bank account to see your dashboard come to life with automatic insights and budgeting." 
-        showSyncAction 
+      <EmptyState
+        icon="👋"
+        title="Welcome to SmartSpend!"
+        description="Add your daily income and expense transactions to see your balance, spending, and budget at a glance."
       />
     );
   }
 
-  const spentTrend = lastMonthSpent > 0
-    ? ((thisMonthSpent - lastMonthSpent) / lastMonthSpent) * 100
-    : 0;
+  // Budget overall
+  const totalBudget = state.budgets.reduce((s, b) => s + b.limit, 0);
+  const budgetUsedPct = totalBudget > 0 ? Math.min((thisMonthSpent / totalBudget) * 100, 100) : 0;
+  const budgetRemaining = Math.max(totalBudget - thisMonthSpent, 0);
+  const isOverBudget = thisMonthSpent > totalBudget;
 
-  const topCategories = categorySpends.slice(0, 5);
-  const pieData = topCategories.map(cs => ({ name: cs.category, value: cs.amount, fill: cs.color }));
-
-  const scoreData = [{ value: budgetScore, fill: budgetScore >= 70 ? '#10B981' : budgetScore >= 40 ? '#F59E0B' : '#EF4444' }];
+  const topCategories = categorySpends.slice(0, 4);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -16 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
+    <motion.div variants={CONTAINER} initial="hidden" animate="show" className="space-y-5 pb-4">
+
+      {/* ── Balance Card ── */}
+      <motion.div variants={ITEM}
+        className="relative rounded-3xl overflow-hidden p-6"
+        style={{ background: 'linear-gradient(135deg, #5B21B6 0%, #1D4ED8 60%, #0EA5E9 100%)' }}
       >
-        <div>
-          <h1 className="text-white text-2xl font-bold">Good afternoon, Wellsy 👋</h1>
-          <p className="text-white/40 text-sm mt-1">Here's your financial overview for July 2026</p>
-        </div>
-        <motion.button
-          onClick={() => setModalOpen(true)}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white text-sm font-semibold shadow-lg shadow-violet-500/25 hover:opacity-90 transition-opacity"
-        >
-          <Plus size={16} />
-          Add Transaction
-        </motion.button>
-      </motion.div>
+        {/* Decorative blobs */}
+        <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute bottom-0 left-8 w-24 h-24 rounded-full bg-blue-400/20 blur-xl" />
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Total Balance"
-          value={totalBalance}
-          icon="💼"
-          color="linear-gradient(135deg, #6C63FF, #3B82F6)"
-          delay={0}
-          trend={2.4}
-          trendLabel="vs last month"
-        />
-        <StatCard
-          label="Monthly Income"
-          value={thisMonthIncome}
-          icon="💰"
-          color="linear-gradient(135deg, #10B981, #059669)"
-          delay={0.05}
-          trend={5.3}
-          trendLabel="vs June"
-        />
-        <StatCard
-          label="Spent This Month"
-          value={thisMonthSpent}
-          icon="🛍️"
-          color="linear-gradient(135deg, #F97316, #EF4444)"
-          delay={0.1}
-          trend={-spentTrend}
-          trendLabel={`vs ₹${Math.round(lastMonthSpent / 1000)}k last month`}
-        />
-        <StatCard
-          label="Saved This Month"
-          value={thisMonthSaved}
-          icon="🎯"
-          color="linear-gradient(135deg, #8B5CF6, #EC4899)"
-          delay={0.15}
-          trendLabel={`${thisMonthIncome > 0 ? ((thisMonthSaved / thisMonthIncome) * 100).toFixed(0) : 0}% of income`}
-        />
-      </div>
-
-      {/* Main grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Spending chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="glass-card lg:col-span-2"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-white font-semibold text-lg">Spending Breakdown</h2>
-              <p className="text-white/40 text-sm">This month's top categories</p>
-            </div>
-            <span className="text-white/30 text-xs">{formatCurrency(thisMonthSpent)} total</span>
+        <div className="relative z-10">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-white/70 text-sm font-medium">Total Balance</p>
+            <button onClick={() => setBalanceVisible(v => !v)} className="text-white/60 hover:text-white transition-colors">
+              {balanceVisible ? <Eye size={16} /> : <EyeOff size={16} />}
+            </button>
           </div>
+          <h2 className="text-white text-4xl font-black tracking-tight mb-4">
+            {balanceVisible ? formatCurrency(totalBalance) : '₹ ••••••'}
+          </h2>
 
-          <div className="flex flex-col sm:flex-row items-center gap-6">
-            <div className="w-48 h-48 flex-shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={88}
-                    paddingAngle={3}
-                    dataKey="value"
-                    strokeWidth={0}
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={index} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(v: number) => [formatCurrency(v), '']}
-                    contentStyle={{ background: '#141F38', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: '#fff' }}
-                    itemStyle={{ color: '#fff' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="flex-1 space-y-3 w-full">
-              {topCategories.map((cs, i) => {
-                const pct = thisMonthSpent > 0 ? (cs.amount / thisMonthSpent) * 100 : 0;
-                return (
-                  <motion.div
-                    key={cs.category}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.3 + i * 0.05 }}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <span>{cs.icon}</span>
-                        <span className="text-white/70 text-sm">{cs.category}</span>
-                      </div>
-                      <span className="text-white text-sm font-semibold">{formatCurrency(cs.amount)}</span>
-                    </div>
-                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${pct}%` }}
-                        transition={{ delay: 0.4 + i * 0.05, duration: 0.8, ease: 'easeOut' }}
-                        className="h-full rounded-full"
-                        style={{ background: cs.color }}
-                      />
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Budget health */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-          className="glass-card flex flex-col items-center justify-center"
-        >
-          <h2 className="text-white font-semibold text-lg mb-1 self-start">Budget Health</h2>
-          <p className="text-white/40 text-sm mb-4 self-start">How you're tracking this month</p>
-
-          <div className="w-40 h-40 relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadialBarChart innerRadius="70%" outerRadius="100%" data={scoreData} startAngle={220} endAngle={-40}>
-                <RadialBar background={{ fill: 'rgba(255,255,255,0.05)' }} dataKey="value" cornerRadius={8} />
-              </RadialBarChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-3xl font-black text-white">{budgetScore}</span>
-              <span className="text-white/40 text-xs">/ 100</span>
-            </div>
-          </div>
-
-          <div className="mt-4 text-center">
-            <p className={`text-sm font-semibold ${budgetScore >= 70 ? 'text-emerald-400' : budgetScore >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
-              {budgetScore >= 70 ? '🟢 Excellent' : budgetScore >= 40 ? '🟡 Needs Attention' : '🔴 Over Budget'}
-            </p>
-            <p className="text-white/30 text-xs mt-1">Based on {state.budgets.length} categories</p>
-          </div>
-
-          {/* Account mini list */}
-          <div className="mt-5 w-full space-y-2">
-            {state.accounts.slice(0, 3).map(acc => (
-              <div key={acc.id} className="flex items-center gap-2">
-                <span className="text-sm">{acc.icon}</span>
-                <span className="text-white/50 text-xs flex-1 truncate">{acc.name}</span>
-                <span className={`text-xs font-semibold ${acc.balance < 0 ? 'text-red-400' : 'text-white/80'}`}>
-                  {acc.balance < 0 ? '−' : ''}{formatCurrency(acc.balance)}
-                </span>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white/15 rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <ArrowDownLeft size={14} className="text-emerald-300" />
+                <span className="text-white/60 text-xs font-medium">Income</span>
               </div>
-            ))}
+              <p className="text-white font-bold text-lg leading-none">{formatCurrency(thisMonthIncome)}</p>
+            </div>
+            <div className="bg-white/15 rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <ArrowUpRight size={14} className="text-red-300" />
+                <span className="text-white/60 text-xs font-medium">Spent</span>
+              </div>
+              <p className="text-white font-bold text-lg leading-none">{formatCurrency(thisMonthSpent)}</p>
+            </div>
           </div>
-        </motion.div>
-      </div>
-
-      {/* Recent transactions */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="glass-card"
-      >
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-white font-semibold text-lg">Recent Transactions</h2>
-          <button className="flex items-center gap-1 text-violet-400 text-sm hover:text-violet-300 transition-colors">
-            View all <ArrowRight size={14} />
-          </button>
-        </div>
-        <div className="divide-y divide-white/5">
-          {recentTransactions.slice(0, 8).map((t, i) => (
-            <TransactionRow key={t.id} transaction={t} index={i} />
-          ))}
         </div>
       </motion.div>
 
-      <AddTransactionModal open={modalOpen} onClose={() => setModalOpen(false)} />
-    </div>
+      {/* ── Budget Progress ── */}
+      <motion.div variants={ITEM} className="glass-card">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-white font-bold text-base">Monthly Budget</h3>
+            <p className="text-white/40 text-xs mt-0.5">
+              {isOverBudget
+                ? `Over by ${formatCurrency(thisMonthSpent - totalBudget)}`
+                : `${formatCurrency(budgetRemaining)} remaining`}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className={`text-xl font-black font-mono ${isOverBudget ? 'text-red-400' : budgetUsedPct >= 80 ? 'text-yellow-400' : 'text-emerald-400'}`}>
+              {budgetUsedPct.toFixed(0)}%
+            </p>
+            <p className="text-white/30 text-xs">used</p>
+          </div>
+        </div>
+
+        {/* Bar */}
+        <div className="h-3 bg-white/8 rounded-full overflow-hidden mb-3">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${budgetUsedPct}%` }}
+            transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }}
+            className="h-full rounded-full"
+            style={{
+              background: isOverBudget
+                ? '#EF4444'
+                : budgetUsedPct >= 80
+                ? 'linear-gradient(90deg, #F59E0B, #EF4444)'
+                : 'linear-gradient(90deg, #6C63FF, #3B82F6)',
+            }}
+          />
+        </div>
+
+        <div className="flex justify-between text-xs text-white/30">
+          <span>₹0</span>
+          <span className="font-medium text-white/50">{formatCurrency(totalBudget)} budget</span>
+        </div>
+
+        {budgetUsedPct >= 80 && !isOverBudget && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs font-medium">
+            <Zap size={13} /> You're close to your budget limit — slow down on spending!
+          </motion.div>
+        )}
+        {isOverBudget && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium">
+            <Zap size={13} /> Budget exceeded! Consider reviewing your expenses.
+          </motion.div>
+        )}
+      </motion.div>
+
+      {/* ── Spending Trend Mini Chart ── */}
+      <motion.div variants={ITEM} className="glass-card">
+        <div className="flex items-center gap-2 mb-4">
+          <TrendingUp size={16} className="text-violet-400" />
+          <h3 className="text-white font-bold text-base">Spending This Week</h3>
+        </div>
+        <div className="h-28">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={state.history.slice(-6)}>
+              <defs>
+                <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#6C63FF" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#6C63FF" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="month" tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{ background: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 12, color: '#fff' }}
+                formatter={(v: any) => [formatCurrency(Number(v) || 0), 'Spent']}
+              />
+              <Area type="monotone" dataKey="spent" stroke="#6C63FF" strokeWidth={2} fill="url(#spendGrad)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </motion.div>
+
+      {/* ── Top Spending Categories ── */}
+      {topCategories.length > 0 && (
+        <motion.div variants={ITEM} className="glass-card">
+          <h3 className="text-white font-bold text-base mb-4">Where You're Spending</h3>
+          <div className="space-y-3">
+            {topCategories.map(cs => {
+              const catTotal = categorySpends.reduce((s, c) => s + c.amount, 0);
+              const pct = catTotal > 0 ? (cs.amount / catTotal) * 100 : 0;
+              return (
+                <div key={cs.category}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">{CATEGORY_ICONS[cs.category] ?? '📦'}</span>
+                      <span className="text-white/80 text-sm">{cs.category}</span>
+                    </div>
+                    <span className="text-white font-semibold text-sm font-mono">{formatCurrency(cs.amount)}</span>
+                  </div>
+                  <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 0.8, ease: 'easeOut' }}
+                      className="h-full rounded-full"
+                      style={{ background: CATEGORY_COLORS[cs.category] ?? '#6C63FF' }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
+
+      {/* ── Recent Expenses ── */}
+      <motion.div variants={ITEM} className="glass-card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-white font-bold text-base">Recent Expenses</h3>
+          <span className="text-violet-400 text-xs font-medium">Last 5</span>
+        </div>
+        <div className="space-y-3">
+          {recentTransactions.filter(t => t.type === 'debit').slice(0, 5).map((txn, i) => {
+            const icon = CATEGORY_ICONS[txn.category] ?? '📦';
+            const color = CATEGORY_COLORS[txn.category] ?? '#94A3B8';
+            return (
+              <motion.div key={txn.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
+                className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg flex-shrink-0"
+                  style={{ background: `${color}20` }}>
+                  {icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium truncate">{txn.title}</p>
+                  <p className="text-white/35 text-xs">{new Date(txn.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</p>
+                </div>
+                <p className="text-white font-bold text-sm font-mono flex-shrink-0">-{formatCurrency(txn.amount)}</p>
+              </motion.div>
+            );
+          })}
+        </div>
+      </motion.div>
+
+    </motion.div>
   );
 }

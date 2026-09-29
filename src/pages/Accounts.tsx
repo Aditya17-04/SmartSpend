@@ -8,7 +8,7 @@ import type { Account } from '../types/finance';
 
 function AccountCard({ account, isSelected, onClick }: { account: Account; isSelected: boolean; onClick: () => void }) {
   const usedPct = account.limit ? Math.abs(account.balance / account.limit) * 100 : 0;
-  const isCredit = account.type === 'credit';
+  const isCredit = (account.type as string) === 'credit';
   const isNegative = account.balance < 0;
 
   return (

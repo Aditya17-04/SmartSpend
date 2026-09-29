@@ -50,26 +50,10 @@ export function Login({ onBack, onRegister }: LoginProps) {
             </div>
             <div>
               <p className="text-white font-bold text-xl">Welcome back</p>
-              <p className="text-white/40 text-sm">Sign in to your Wellsy account</p>
+              <p className="text-white/40 text-sm">Sign in to your Smart Spend account</p>
             </div>
           </div>
 
-          {/* Google button */}
-          <button className="w-full flex items-center justify-center gap-3 py-3 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white transition-all mb-5 text-sm font-medium">
-            <svg width="18" height="18" viewBox="0 0 48 48">
-              <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.2l6.8-6.8C35.8 2.3 30.2 0 24 0 14.7 0 6.7 5.4 2.8 13.3l7.9 6.1C12.6 13 17.9 9.5 24 9.5z"/>
-              <path fill="#4285F4" d="M46.6 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.2-10.1 7.2-17z"/>
-              <path fill="#FBBC05" d="M10.7 28.6A14.6 14.6 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7L2.4 13.2A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.5 10.6l8.2-6z"/>
-              <path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.2-7.7 2.2-6.1 0-11.3-4.1-13.2-9.6l-8 6.2C6.6 42.6 14.7 48 24 48z"/>
-            </svg>
-            Continue with Google
-          </button>
-
-          <div className="flex items-center gap-3 mb-5">
-            <div className="flex-1 h-px bg-white/10" />
-            <span className="text-white/30 text-xs">or</span>
-            <div className="flex-1 h-px bg-white/10" />
-          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="relative">

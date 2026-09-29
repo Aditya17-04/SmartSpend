@@ -25,11 +25,11 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const AUTH_KEY = 'wellsy-auth-v1';
+const AUTH_KEY = 'smart-spend-auth-v1';
 
 function loadAuth(): AuthState {
   try {
-    const raw = localStorage.getItem(AUTH_KEY);
+    const raw = localStorage.getItem(AUTH_KEY) || localStorage.getItem('wellsy-auth-v1');
     if (raw) return JSON.parse(raw) as AuthState;
   } catch {}
   return { user: null, isAuthenticated: false, hasOnboarded: false };
@@ -67,6 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setAuthState({ user: null, isAuthenticated: false, hasOnboarded: false });
+    localStorage.removeItem('smart-spend-finance');
+    localStorage.removeItem('smart-spend-finance-version');
     localStorage.removeItem('wellsy-finance');
     localStorage.removeItem('wellsy-finance-version');
   };

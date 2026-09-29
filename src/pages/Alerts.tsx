@@ -156,7 +156,9 @@ export function Alerts() {
                 <p className="text-white/60 text-sm">{alert.message}</p>
               </div>
               {!isAllGood && (
-                <Icon size={18} style={{ color: config.iconColor }} className="flex-shrink-0 mt-0.5" />
+                <span style={{ color: config.iconColor }} className="flex-shrink-0 mt-0.5">
+                  <Icon size={18} />
+                </span>
               )}
             </motion.div>
           );

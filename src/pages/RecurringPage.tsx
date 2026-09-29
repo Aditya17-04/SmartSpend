@@ -219,7 +219,6 @@ export function RecurringPage() {
                     <p className="text-white text-sm font-medium truncate">{r.title}</p>
                     <p className="text-white/30 text-xs truncate">{account?.name ?? 'Unknown Account'} {r.note && `· ${r.note}`}</p>
                   </div>
-                  {r.isRecurring && <RefreshCw size={12} className="text-violet-400/50 flex-shrink-0" />}
                 </div>
 
                 <div className="text-white/50 text-xs">{FREQ_LABELS[r.frequency]}</div>

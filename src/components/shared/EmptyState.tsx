@@ -12,9 +12,7 @@ interface EmptyStateProps {
   showSyncAction?: boolean;
 }
 
-export function EmptyState({ icon, title, description, actionLabel, onAction, showSyncAction }: EmptyStateProps) {
-  const { syncData } = useFinance();
-  
+export function EmptyState({ icon, title, description, actionLabel, onAction }: EmptyStateProps) {
   return (
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
@@ -29,25 +27,14 @@ export function EmptyState({ icon, title, description, actionLabel, onAction, sh
         {description}
       </p>
       
-      <div className="flex gap-4">
-        {actionLabel && onAction && (
-          <button 
-            onClick={onAction}
-            className="px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white font-medium hover:bg-white/10 transition-all flex items-center gap-2"
-          >
-            <Plus size={18} /> {actionLabel}
-          </button>
-        )}
-        
-        {showSyncAction && (
-          <button 
-            onClick={() => syncData()}
-            className="px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white font-bold hover:opacity-90 transition-opacity shadow-lg shadow-violet-500/25 flex items-center gap-2"
-          >
-            Connect Accounts <ArrowRight size={18} />
-          </button>
-        )}
-      </div>
+      {actionLabel && onAction && (
+        <button 
+          onClick={onAction}
+          className="px-6 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+        >
+          <Plus size={18} /> {actionLabel}
+        </button>
+      )}
     </motion.div>
   );
 }

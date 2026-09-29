@@ -67,7 +67,7 @@ export function Spending() {
                 dataKey="amount"
                 nameKey="category"
                 strokeWidth={0}
-                label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                label={({ cx = 0, cy = 0, midAngle = 0, innerRadius = 0, outerRadius = 0, percent = 0 }) => {
                   if (percent < 0.06) return null;
                   const RADIAN = Math.PI / 180;
                   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -85,7 +85,7 @@ export function Spending() {
                 ))}
               </Pie>
               <Tooltip
-                formatter={(v: number) => [formatCurrency(v), '']}
+                formatter={(v: any) => [formatCurrency(Number(v) || 0), '']}
                 contentStyle={{ background: '#141F38', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: '#fff' }}
               />
             </PieChart>
@@ -107,7 +107,7 @@ export function Spending() {
               <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
               <Tooltip
-                formatter={(v: number) => [formatCurrency(v), '']}
+                formatter={(v: any) => [formatCurrency(Number(v) || 0), '']}
                 contentStyle={{ background: '#141F38', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: '#fff' }}
               />
               <Legend wrapperStyle={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }} />

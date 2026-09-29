@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useReducer, useEffect, useMemo, type ReactNode } from 'react';
 import React from 'react';
 import type { Account, Transaction, Budget, SavingsGoal, MonthlyHistory, CategorySpend, Alert, RecurringTransaction, TransactionStatus } from '../types/finance';
 import { mockAccounts, mockTransactions, mockBudgets, mockSavingsGoals, mockMonthlyHistory, mockRecurring, syncedAccounts, syncedTransactions, syncedBudgets, syncedGoals, syncedHistory, syncedRecurring } from '../data/mockData';
@@ -8,6 +8,7 @@ interface FinanceState {
   accounts: Account[];
   transactions: Transaction[];
   budgets: Budget[];
+  monthlyBudget?: number;
   goals: SavingsGoal[];
   history: MonthlyHistory[];
   recurring: RecurringTransaction[];
@@ -22,20 +23,12 @@ type Action =
   | { type: 'ADD_GOAL'; payload: SavingsGoal }
   | { type: 'UPDATE_GOAL'; payload: SavingsGoal }
   | { type: 'UPDATE_BUDGET'; payload: Budget }
+  | { type: 'SET_MONTHLY_BUDGET'; payload: number }
   | { type: 'ADD_RECURRING'; payload: RecurringTransaction }
   | { type: 'UPDATE_RECURRING'; payload: RecurringTransaction }
   | { type: 'DELETE_RECURRING'; payload: string }
   | { type: 'SYNC_DATA' }
   | { type: 'RESET' };
-
-const emptyState: FinanceState = {
-  accounts: mockAccounts,
-  transactions: mockTransactions,
-  budgets: mockBudgets,
-  goals: mockSavingsGoals,
-  history: mockMonthlyHistory,
-  recurring: mockRecurring,
-};
 
 function reducer(state: FinanceState, action: Action): FinanceState {
   switch (action.type) {
@@ -58,10 +51,19 @@ function reducer(state: FinanceState, action: Action): FinanceState {
       return { ...state, goals: [...state.goals, action.payload] };
     case 'UPDATE_GOAL':
       return { ...state, goals: state.goals.map(g => g.id === action.payload.id ? action.payload : g) };
-    case 'UPDATE_BUDGET':
+    case 'UPDATE_BUDGET': {
+      const exists = state.budgets.some(b => b.category === action.payload.category);
       return {
         ...state,
-        budgets: state.budgets.map(b => b.category === action.payload.category ? action.payload : b),
+        budgets: exists 
+          ? state.budgets.map(b => b.category === action.payload.category ? action.payload : b)
+          : [...state.budgets, action.payload],
+      };
+    }
+    case 'SET_MONTHLY_BUDGET':
+      return {
+        ...state,
+        monthlyBudget: action.payload,
       };
     case 'ADD_RECURRING':
       return { ...state, recurring: [...state.recurring, action.payload] };
@@ -70,7 +72,7 @@ function reducer(state: FinanceState, action: Action): FinanceState {
     case 'DELETE_RECURRING':
       return { ...state, recurring: state.recurring.filter(r => r.id !== action.payload) };
     case 'SYNC_DATA':
-      return { accounts: syncedAccounts, transactions: syncedTransactions, budgets: syncedBudgets, goals: syncedGoals, history: syncedHistory, recurring: syncedRecurring };
+      return state; // no-op: keep current data
     case 'RESET':
       return emptyState;
     default:
@@ -78,12 +80,25 @@ function reducer(state: FinanceState, action: Action): FinanceState {
   }
 }
 
-const DATA_VERSION = 'v4-money-manager';
+const emptyState: FinanceState = {
+  accounts: [
+    { id: 'acc-1', name: 'Cash', bankName: 'Cash', type: 'cash', balance: 0, accountNumber: '', color: '#10B981', icon: '💵' },
+    { id: 'acc-2', name: 'UPI', bankName: 'UPI', type: 'upi', balance: 0, accountNumber: '', color: '#6C63FF', icon: '📱' },
+  ],
+  transactions: [],
+  budgets: [],
+  monthlyBudget: 0,
+  goals: [],
+  history: [],
+  recurring: [],
+};
+
+const DATA_VERSION = 'v11-clean-zero-static-data';
 
 function loadInitialState(): FinanceState {
   try {
-    const raw = localStorage.getItem('wellsy-finance');
-    const ver = localStorage.getItem('wellsy-finance-version');
+    const raw = localStorage.getItem('smart-spend-finance') || localStorage.getItem('wellsy-finance');
+    const ver = localStorage.getItem('smart-spend-finance-version') || localStorage.getItem('wellsy-finance-version');
     if (raw && ver === DATA_VERSION) return JSON.parse(raw) as FinanceState;
   } catch {}
   return emptyState;
@@ -99,6 +114,7 @@ interface FinanceContextValue {
   addGoal: (g: SavingsGoal) => void;
   updateGoal: (g: SavingsGoal) => void;
   updateBudget: (b: Budget) => void;
+  setMonthlyBudget: (amount: number) => void;
   addRecurring: (r: RecurringTransaction) => void;
   updateRecurring: (r: RecurringTransaction) => void;
   deleteRecurring: (id: string) => void;
@@ -127,26 +143,69 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadInitialState);
 
   useEffect(() => {
-    localStorage.setItem('wellsy-finance', JSON.stringify(state));
-    localStorage.setItem('wellsy-finance-version', DATA_VERSION);
+    localStorage.setItem('smart-spend-finance', JSON.stringify(state));
+    localStorage.setItem('smart-spend-finance-version', DATA_VERSION);
   }, [state]);
 
-  const hasData = state.accounts.length > 0;
+  const hasData = true;
 
-  const totalAssets = state.accounts.filter(a => a.balance > 0).reduce((s, a) => s + a.balance, 0);
-  const totalLiabilities = state.accounts.filter(a => a.balance < 0).reduce((s, a) => s + Math.abs(a.balance), 0);
+  // Ensure unmatched transactions fallback to primary account
+  const defaultAccId = state.accounts[0]?.id ?? 'acc-1';
+
+  // Calculate dynamic balances for each account based purely on manual transactions
+  const accountsWithDynamicBalance = useMemo(() => {
+    return state.accounts.map((acc, idx) => {
+      const isPrimary = idx === 0;
+      const totalCredit = state.transactions
+        .filter(t => t.accountId === acc.id || (isPrimary && !state.accounts.some(a => a.id === t.accountId)))
+        .filter(t => t.type === 'credit')
+        .reduce((s, t) => s + t.amount, 0);
+      const totalDebit = state.transactions
+        .filter(t => t.accountId === acc.id || (isPrimary && !state.accounts.some(a => a.id === t.accountId)))
+        .filter(t => t.type === 'debit')
+        .reduce((s, t) => s + t.amount, 0);
+      return {
+        ...acc,
+        balance: totalCredit - totalDebit,
+      };
+    });
+  }, [state.accounts, state.transactions]);
+
+  const totalAssets = accountsWithDynamicBalance.filter((a: Account) => a.balance > 0).reduce((s: number, a: Account) => s + a.balance, 0);
+  const totalLiabilities = accountsWithDynamicBalance.filter((a: Account) => a.balance < 0).reduce((s: number, a: Account) => s + Math.abs(a.balance), 0);
   const totalBalance = totalAssets - totalLiabilities;
 
-  const thisMonthTxns = state.transactions.filter(t => isCurrentMonth(t.date));
-  const lastMonthTxns = state.transactions.filter(t => isLastMonth(t.date));
-  const thisMonthIncome = thisMonthTxns.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
-  const thisMonthSpent = thisMonthTxns.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+  // Identify latest transaction date for fallback when current calendar month has no data
+  const latestTxnDate = useMemo(() => {
+    if (state.transactions.length === 0) return new Date();
+    const sorted = [...state.transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const d = new Date(sorted[0].date);
+    return isNaN(d.getTime()) ? new Date() : d;
+  }, [state.transactions]);
+
+  // Active month transactions: use current calendar month if it has data; otherwise fallback to latest month with data
+  const activeMonthTxns = useMemo(() => {
+    const current = state.transactions.filter(t => isCurrentMonth(t.date));
+    if (current.length > 0) return current;
+    if (state.transactions.length === 0) return [];
+    return state.transactions.filter(t => {
+      const d = new Date(t.date);
+      return d.getFullYear() === latestTxnDate.getFullYear() && d.getMonth() === latestTxnDate.getMonth();
+    });
+  }, [state.transactions, latestTxnDate]);
+
+  const lastMonthTxns = useMemo(() => {
+    return state.transactions.filter(t => isLastMonth(t.date));
+  }, [state.transactions]);
+
+  const thisMonthIncome = activeMonthTxns.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
+  const thisMonthSpent = activeMonthTxns.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
   const thisMonthSaved = thisMonthIncome - thisMonthSpent;
   const lastMonthSpent = lastMonthTxns.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
 
   const spendByCategory = new Map<string, number>();
   const prevSpendByCategory = new Map<string, number>();
-  thisMonthTxns.filter(t => t.type === 'debit').forEach(t => spendByCategory.set(t.category, (spendByCategory.get(t.category) ?? 0) + t.amount));
+  activeMonthTxns.filter(t => t.type === 'debit').forEach(t => spendByCategory.set(t.category, (spendByCategory.get(t.category) ?? 0) + t.amount));
   lastMonthTxns.filter(t => t.type === 'debit').forEach(t => prevSpendByCategory.set(t.category, (prevSpendByCategory.get(t.category) ?? 0) + t.amount));
 
   const categorySpends: CategorySpend[] = Array.from(spendByCategory.entries())
@@ -185,11 +244,41 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   });
   if (alerts.length === 0 && hasData) alerts.push({ id: 'all-good', severity: 'info', title: "You're doing great! 🎉", message: 'All budgets on track and spending looks healthy this month.', icon: '✅' });
 
+  // Compute dynamic monthly history from transactions
+  const dynamicHistory = useMemo(() => {
+    if (state.transactions.length === 0) return [];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const map = new Map<string, { month: string; spent: number; income: number; sortKey: string }>();
+
+    state.transactions.forEach(t => {
+      const d = new Date(t.date);
+      if (isNaN(d.getTime())) return;
+      const sortKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = `${monthNames[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`;
+
+      if (!map.has(sortKey)) {
+        map.set(sortKey, { month: label, spent: 0, income: 0, sortKey });
+      }
+      const entry = map.get(sortKey)!;
+      if (t.type === 'debit') entry.spent += t.amount;
+      else if (t.type === 'credit') entry.income += t.amount;
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .map(e => ({ month: e.month, spent: e.spent, income: e.income, saved: e.income - e.spent }));
+  }, [state.transactions]);
+
   const recentTransactions = [...state.transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
 
   return (
     <FinanceContext.Provider value={{
-      state, hasData, totalBalance, totalAssets, totalLiabilities,
+      state: { 
+        ...state, 
+        accounts: accountsWithDynamicBalance,
+        history: dynamicHistory.length > 0 ? dynamicHistory : state.history,
+      },
+      hasData, totalBalance, totalAssets, totalLiabilities,
       thisMonthIncome, thisMonthSpent, thisMonthSaved, lastMonthSpent,
       categorySpends, categoryBudgetStatus, alerts, recentTransactions, budgetScore,
       totalBudgeted, toBeBudgeted,
@@ -201,6 +290,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       addGoal: g => dispatch({ type: 'ADD_GOAL', payload: g }),
       updateGoal: g => dispatch({ type: 'UPDATE_GOAL', payload: g }),
       updateBudget: b => dispatch({ type: 'UPDATE_BUDGET', payload: b }),
+      setMonthlyBudget: amount => dispatch({ type: 'SET_MONTHLY_BUDGET', payload: amount }),
       addRecurring: r => dispatch({ type: 'ADD_RECURRING', payload: r }),
       updateRecurring: r => dispatch({ type: 'UPDATE_RECURRING', payload: r }),
       deleteRecurring: id => dispatch({ type: 'DELETE_RECURRING', payload: id }),

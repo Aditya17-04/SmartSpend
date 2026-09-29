@@ -40,6 +40,7 @@ export function AddTransactionModal({ open, onClose }: AddTransactionModalProps)
       amount: parseFloat(amount),
       type,
       date: new Date().toISOString(),
+      status: 'cleared',
     };
     addTransaction(t);
     // Reset

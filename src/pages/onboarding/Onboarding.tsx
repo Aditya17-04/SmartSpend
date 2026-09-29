@@ -156,7 +156,7 @@ export function Onboarding() {
                   Welcome, {user?.name?.split(' ')[0] ?? 'there'}!
                 </h1>
                 <p className="text-white/50 mb-8 leading-relaxed">
-                  Let's set up your Wellsy dashboard. Connect your financial accounts and we'll take care of the rest — tracking, categorising, and giving you insights automatically.
+                  Let's set up your Smart Spend dashboard. Track your income, manage expenses, and get clear AI financial guidance automatically.
                 </p>
                 <div className="grid grid-cols-2 gap-3 mb-8 text-left">
                   {[

@@ -18,7 +18,7 @@ export function ChatWidget() {
     {
       id: 'msg-1',
       sender: 'ai',
-      text: "Hi! I'm your Wellsy AI assistant. Ask me anything about your spending, budgets, or savings.",
+      text: "Hi! I'm your Smart Spend AI assistant. Ask me anything about your spending, budgets, or savings.",
       timestamp: new Date(),
     }
   ]);
@@ -136,7 +136,7 @@ export function ChatWidget() {
                   <Sparkles size={18} className="text-white" />
                 </div>
                 <div>
-                  <h3 className="text-white font-bold text-sm">Wellsy AI Assistant</h3>
+                  <h3 className="text-white font-bold text-sm">Smart Spend AI Assistant</h3>
                   <p className="text-white/50 text-xs flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
                     Online
