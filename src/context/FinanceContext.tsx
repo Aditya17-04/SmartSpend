@@ -1,8 +1,10 @@
-import { createContext, useContext, useReducer, useEffect, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useReducer, useEffect, useMemo, useState, type ReactNode } from 'react';
 import React from 'react';
 import type { Account, Transaction, Budget, SavingsGoal, MonthlyHistory, CategorySpend, Alert, RecurringTransaction, TransactionStatus } from '../types/finance';
 import { mockAccounts, mockTransactions, mockBudgets, mockSavingsGoals, mockMonthlyHistory, mockRecurring, syncedAccounts, syncedTransactions, syncedBudgets, syncedGoals, syncedHistory, syncedRecurring } from '../data/mockData';
 import { isCurrentMonth, isLastMonth, CATEGORY_COLORS, CATEGORY_ICONS, calcBudgetHealth } from '../lib/utils';
+import { useAuth } from './AuthContext';
+import { supabase } from '../lib/supabase';
 
 interface FinanceState {
   accounts: Account[];
@@ -15,6 +17,7 @@ interface FinanceState {
 }
 
 type Action =
+  | { type: 'LOAD_STATE'; payload: FinanceState }
   | { type: 'ADD_TRANSACTION'; payload: Transaction }
   | { type: 'UPDATE_TRANSACTION'; payload: Transaction }
   | { type: 'DELETE_TRANSACTION'; payload: string }
@@ -32,6 +35,8 @@ type Action =
 
 function reducer(state: FinanceState, action: Action): FinanceState {
   switch (action.type) {
+    case 'LOAD_STATE':
+      return action.payload;
     case 'ADD_TRANSACTION':
       return { ...state, transactions: [action.payload, ...state.transactions] };
     case 'UPDATE_TRANSACTION':
@@ -95,10 +100,11 @@ const emptyState: FinanceState = {
 
 const DATA_VERSION = 'v11-clean-zero-static-data';
 
-function loadInitialState(): FinanceState {
+function loadStateForUser(userId: string): FinanceState {
   try {
-    const raw = localStorage.getItem('smart-spend-finance') || localStorage.getItem('wellsy-finance');
-    const ver = localStorage.getItem('smart-spend-finance-version') || localStorage.getItem('wellsy-finance-version');
+    const storageKey = `smart-spend-finance-${userId}`;
+    const raw = localStorage.getItem(storageKey);
+    const ver = localStorage.getItem(`${storageKey}-version`);
     if (raw && ver === DATA_VERSION) return JSON.parse(raw) as FinanceState;
   } catch {}
   return emptyState;
@@ -140,12 +146,31 @@ interface FinanceContextValue {
 const FinanceContext = createContext<FinanceContextValue | null>(null);
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, loadInitialState);
+  const { user } = useAuth();
+  const [state, dispatch] = useReducer(reducer, emptyState);
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('smart-spend-finance', JSON.stringify(state));
-    localStorage.setItem('smart-spend-finance-version', DATA_VERSION);
-  }, [state]);
+    if (!user) {
+      setLoadedUserId(null);
+      dispatch({ type: 'LOAD_STATE', payload: emptyState });
+      return;
+    }
+
+    setLoadedUserId(null);
+    dispatch({ type: 'LOAD_STATE', payload: loadStateForUser(user.id) });
+    setLoadedUserId(user.id);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user || loadedUserId !== user.id) return;
+    const storageKey = `smart-spend-finance-${user.id}`;
+    localStorage.setItem(storageKey, JSON.stringify(state));
+    localStorage.setItem(`${storageKey}-version`, DATA_VERSION);
+    if (supabase) {
+      void supabase.from('finance_snapshots').upsert({ user_id: user.id, data: state, updated_at: new Date().toISOString() });
+    }
+  }, [state, user, loadedUserId]);
 
   const hasData = true;
 

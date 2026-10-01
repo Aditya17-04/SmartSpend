@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Receipt, Wallet, Sparkles, Bot, UserCircle, Menu, X, ChevronRight, LogOut, Users,
@@ -6,6 +6,7 @@ import {
 import { cn } from '../../lib/utils';
 import { useFinance } from '../../context/FinanceContext';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 export type PageId = 'dashboard' | 'expenses' | 'budget' | 'insights' | 'ask' | 'profile' | 'parentDashboard';
 
@@ -33,6 +34,23 @@ interface SidebarProps {
 
 export function Sidebar({ activePage, onNavigate }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const { user } = useAuth();
+  const [hasParentAccess, setHasParentAccess] = useState(false);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !user?.email) {
+      setHasParentAccess(false);
+      return;
+    }
+    client.from('parent_access').select('id')
+      .or(`parent_id.eq.${user.id},parent_email.eq.${user.email.toLowerCase()}`)
+      .in('status', ['pending', 'approved'])
+      .limit(1)
+      .then(({ data }) => setHasParentAccess(Boolean(data?.length)));
+  }, [user]);
+
+  const visibleNavItems = hasParentAccess ? navItems : navItems.filter(item => item.id !== 'parentDashboard');
 
   return (
     <>
@@ -46,6 +64,7 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
           onNavigate={onNavigate}
           collapsed={collapsed}
           onToggleCollapse={() => setCollapsed(v => !v)}
+          items={visibleNavItems}
         />
       </aside>
 
@@ -53,19 +72,20 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
       <div className={cn('hidden lg:block transition-all duration-300 flex-shrink-0', collapsed ? 'w-16' : 'w-60')} />
 
       {/* Mobile nav */}
-      <MobileNav activePage={activePage} onNavigate={onNavigate} />
+      <MobileNav activePage={activePage} onNavigate={onNavigate} items={visibleNavItems} />
     </>
   );
 }
 
 function SidebarContent({
-  activePage, onNavigate, onClose, collapsed, onToggleCollapse,
+  activePage, onNavigate, onClose, collapsed, onToggleCollapse, items,
 }: {
   activePage: PageId;
   onNavigate: (p: PageId) => void;
   onClose?: () => void;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  items: NavItem[];
 }) {
   const { user, logout } = useAuth();
 
@@ -101,7 +121,7 @@ function SidebarContent({
 
       {/* Nav items */}
       <nav className="flex flex-col gap-1.5 flex-1">
-        {navItems.map((item) => {
+        {items.map((item) => {
           const isActive = activePage === item.id;
           const Icon = item.icon;
 
@@ -178,9 +198,9 @@ function SidebarContent({
   );
 }
 
-function MobileNav({ activePage, onNavigate }: { activePage: PageId; onNavigate: (p: PageId) => void }) {
+function MobileNav({ activePage, onNavigate, items }: { activePage: PageId; onNavigate: (p: PageId) => void; items: NavItem[] }) {
   const [open, setOpen] = useState(false);
-  const activeItem = navItems.find(n => n.id === activePage)!;
+  const activeItem = items.find(n => n.id === activePage) ?? items[0];
   const Icon = activeItem.icon;
 
   return (
@@ -207,7 +227,7 @@ function MobileNav({ activePage, onNavigate }: { activePage: PageId; onNavigate:
 
       {/* Bottom tab bar (mobile) */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-navy-900 border-t border-white/5 px-2 py-1 flex items-center justify-around">
-        {navItems.map(item => {
+        {items.map(item => {
           const isActive = activePage === item.id;
           const Icon = item.icon;
           return (
@@ -235,7 +255,7 @@ function MobileNav({ activePage, onNavigate }: { activePage: PageId; onNavigate:
             <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
               className="fixed left-0 top-0 bottom-0 w-64 bg-navy-900 border-r border-white/5 z-50 p-5 lg:hidden">
-              <SidebarContent activePage={activePage} onNavigate={onNavigate} onClose={() => setOpen(false)} />
+              <SidebarContent activePage={activePage} onNavigate={onNavigate} onClose={() => setOpen(false)} items={items} />
             </motion.div>
           </>
         )}

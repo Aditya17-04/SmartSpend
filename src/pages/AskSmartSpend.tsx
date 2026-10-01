@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 import { formatCurrency, CATEGORY_COLORS, CATEGORY_ICONS } from '../lib/utils';
 import type { Transaction } from '../types/finance';
 
@@ -625,6 +626,25 @@ function buildReply(query: string, snap: FinanceSnapshot): { blocks: ContentBloc
   };
 }
 
+async function requestGeminiReply(query: string, snap: FinanceSnapshot): Promise<string> {
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: [
+        'You are SmartSpend AI, a concise personal finance assistant.',
+        'Answer only from the supplied user data. If the data does not answer the question, say so clearly.',
+        'Do not invent transactions, balances, dates, or recommendations. This is educational information, not financial advice.',
+        `User question: ${query}`,
+        `User finance data: ${JSON.stringify(snap)}`,
+      ].join('\n\n'),
+    }),
+  });
+  const data = await response.json() as { answer?: string; error?: string };
+  if (!response.ok) throw new Error(data.error ?? 'Unable to contact Gemini');
+  return data.answer ?? 'Gemini returned no answer.';
+}
+
 // ─── Suggested Prompts ──────────────────────────────────────────────────────────
 
 const PROMPT_GROUPS = [
@@ -759,7 +779,8 @@ export function AskSmartSpend() {
     chips: INIT_CHIPS,
   }), []); // intentionally not reactive — only on mount
 
-  const [messages, setMessages] = useState<Message[]>([initMessage]);
+  const chatStorageKey = `smart-spend-chat-${user?.id ?? 'guest'}`;
+  const [messages, setMessages] = useLocalStorage<Message[]>(chatStorageKey, [initMessage]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [latestAiId, setLatestAiId] = useState<string | null>('init');
@@ -787,8 +808,18 @@ export function AskSmartSpend() {
     setIsTyping(true);
 
     const delay = 600 + Math.random() * 400;
-    setTimeout(() => {
-      const { blocks, chips } = buildReply(query, snap);
+    setTimeout(async () => {
+      let blocks: ContentBlock[];
+      let chips: string[];
+      try {
+        const answer = await requestGeminiReply(query, snap);
+        blocks = [{ type: 'text', content: answer }];
+        chips = [];
+      } catch {
+        const fallback = buildReply(query, snap);
+        blocks = fallback.blocks;
+        chips = fallback.chips;
+      }
       const aiMsg: Message = {
         id: `ai-${Date.now()}`,
         sender: 'ai',

@@ -27,6 +27,7 @@ import { formatCurrency, CATEGORY_COLORS, CATEGORY_ICONS, getCategoryColor } fro
 import { useFinance } from "../context/FinanceContext";
 import { useAuth } from "../context/AuthContext";
 import type { Transaction, Budget } from "../types/finance";
+import { supabase } from "../lib/supabase";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -589,6 +590,10 @@ function InsightsTab({
 export function ParentDashboard() {
   const { state, categoryBudgetStatus } = useFinance();
   const { user } = useAuth();
+  const [sharedChild, setSharedChild] = useState<{ name: string; transactions: Transaction[]; budgets: Budget[] } | null>(null);
+  const [pendingInvite, setPendingInvite] = useState<{ id: string } | null>(null);
+  const [accessMessage, setAccessMessage] = useState('');
+  const [isParentAccount, setIsParentAccount] = useState(false);
 
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
@@ -596,15 +601,75 @@ export function ParentDashboard() {
   const [monthOpen, setMonthOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !user?.email) return;
+    const loadSharedChild = async () => {
+      const { data: pending, error: pendingError } = await client.from('parent_access').select('id').eq('parent_email', user.email!.toLowerCase()).eq('status', 'pending').maybeSingle();
+      if (pendingError) {
+        setAccessMessage(`Unable to check consent: ${pendingError.message}`);
+        return;
+      }
+      if (pending) {
+        setPendingInvite(pending);
+        setIsParentAccount(true);
+      }
+      const { data: approved, error: approvedError } = await client.from('parent_access').select('child_id').eq('parent_id', user.id).eq('status', 'approved').maybeSingle();
+      if (approvedError) {
+        setAccessMessage(`Unable to load parent access: ${approvedError.message}`);
+        return;
+      }
+      if (!approved) return;
+      setIsParentAccount(true);
+      const { data: snapshot, error: snapshotError } = await client.from('finance_snapshots').select('data').eq('user_id', approved.child_id).single();
+      if (snapshotError) {
+        setAccessMessage(`Access is approved, but the child data is not synced yet: ${snapshotError.message}`);
+        return;
+      }
+      const child = snapshot?.data as { transactions?: Transaction[]; budgets?: Budget[] } | undefined;
+      if (child) setSharedChild({ name: 'Your Child', transactions: child.transactions ?? [], budgets: child.budgets ?? [] });
+    };
+    void loadSharedChild();
+  }, [user]);
+
+  const approveInvite = async () => {
+    const client = supabase;
+    if (!client || !pendingInvite || !user) return;
+    const { error } = await client.from('parent_access').update({ parent_id: user.id, status: 'approved', approved_at: new Date().toISOString() }).eq('id', pendingInvite.id);
+    if (error) {
+      setAccessMessage(error.message);
+      return;
+    }
+
+    const { data: access } = await client.from('parent_access').select('child_id').eq('id', pendingInvite.id).single();
+    if (access) {
+      const { data: snapshot, error: snapshotError } = await client.from('finance_snapshots').select('data').eq('user_id', access.child_id).single();
+      const child = snapshot?.data as { transactions?: Transaction[]; budgets?: Budget[] } | undefined;
+      if (snapshotError || !child) {
+        setAccessMessage('Access approved, but the child has not synced finance data yet.');
+      } else {
+        setSharedChild({ name: 'Your Child', transactions: child.transactions ?? [], budgets: child.budgets ?? [] });
+        setAccessMessage('Access approved. The shared child data is now visible.');
+      }
+    } else {
+      setAccessMessage('Access was approved, but the sharing record could not be loaded.');
+    }
+    setPendingInvite(null);
+  };
+
+  const sourceTransactions = sharedChild?.transactions ?? (isParentAccount ? [] : state.transactions);
+  const visibleTransactions = Array.from(new Map(sourceTransactions.map(transaction => [transaction.id, transaction])).values());
+  const visibleBudgets = sharedChild?.budgets ?? (isParentAccount ? [] : state.budgets);
+
   // Auto-switch to active month if current calendar month has no data
   useEffect(() => {
-    if (state.transactions.length > 0) {
-      const hasCurrent = state.transactions.some(t => {
+    if (visibleTransactions.length > 0) {
+      const hasCurrent = visibleTransactions.some(t => {
         const d = new Date(t.date);
         return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
       });
       if (!hasCurrent) {
-        const sorted = [...state.transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const sorted = [...visibleTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         const latest = sorted[0];
         if (latest) {
           const d = new Date(latest.date);
@@ -615,15 +680,15 @@ export function ParentDashboard() {
         }
       }
     }
-  }, [state.transactions.length]);
+  }, [visibleTransactions.length]);
 
   // Filter transactions by selected month/year
   const monthTransactions = useMemo(() => {
-    return state.transactions.filter(t => {
+    return visibleTransactions.filter(t => {
       const d = new Date(t.date);
       return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [state.transactions, selectedMonth, selectedYear]);
+  }, [visibleTransactions, selectedMonth, selectedYear]);
 
   // Spend map for the selected month
   const spendMap = useMemo(() => {
@@ -636,9 +701,9 @@ export function ParentDashboard() {
 
   const totalSpent = useMemo(() => monthTransactions.filter(t => t.type === "debit").reduce((s, t) => s + t.amount, 0), [monthTransactions]);
   const totalIncome = useMemo(() => monthTransactions.filter(t => t.type === "credit").reduce((s, t) => s + t.amount, 0), [monthTransactions]);
-  const totalBudget = state.budgets.reduce((s, b) => s + b.limit, 0);
+  const totalBudget = visibleBudgets.reduce((s, b) => s + b.limit, 0);
 
-  const childName = user?.name ?? "Your Child";
+  const childName = sharedChild?.name ?? user?.name ?? "Your Child";
 
   return (
     <div className="min-h-screen text-white font-sans pb-8">
@@ -718,6 +783,13 @@ export function ParentDashboard() {
       </div>
 
       {/* Consent banner */}
+      {pendingInvite && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 mb-4">
+          <p className="text-amber-200 text-sm">A child has invited this account to view their spending.</p>
+          <button onClick={approveInvite} className="px-3 py-2 rounded-xl bg-amber-400 text-black text-xs font-bold">Approve</button>
+        </div>
+      )}
+      {accessMessage && <p className="text-emerald-300 text-xs mb-3">{accessMessage}</p>}
       <motion.div variants={ITEM} initial="hidden" animate="show"
         className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 mb-4"
       >
@@ -741,7 +813,7 @@ export function ParentDashboard() {
           {activeTab === "overview" && (
             <OverviewTab
               transactions={monthTransactions}
-              budgets={state.budgets}
+              budgets={visibleBudgets}
               monthLabel={MONTHS[selectedMonth]}
               year={selectedYear}
               totalSpent={totalSpent}
@@ -759,7 +831,7 @@ export function ParentDashboard() {
           )}
           {activeTab === "budgets" && (
             <BudgetsTab
-              budgets={state.budgets}
+              budgets={visibleBudgets}
               spendMap={spendMap}
               monthLabel={MONTHS[selectedMonth]}
             />
@@ -767,7 +839,7 @@ export function ParentDashboard() {
           {activeTab === "insights" && (
             <InsightsTab
               transactions={monthTransactions}
-              budgets={state.budgets}
+              budgets={visibleBudgets}
               spendMap={spendMap}
               totalSpent={totalSpent}
               totalIncome={totalIncome}

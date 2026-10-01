@@ -41,8 +41,16 @@ export function Register({ onBack, onLogin }: RegisterProps) {
     if (!agreed) return setError('Please accept the terms to continue.');
 
     setLoading(true);
-    await register(name, email, password);
-    setLoading(false);
+    try {
+      const authenticated = await register(name, email, password);
+      if (!authenticated) {
+        setError('Account created. Check your email to confirm your account, then sign in.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to create your account.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inputClass =

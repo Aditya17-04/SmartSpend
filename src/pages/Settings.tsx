@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   User,
@@ -28,6 +28,7 @@ import { useFinance } from '../context/FinanceContext';
 import { parseExcelOrCsv, parsePdfStatement, downloadSampleTemplate } from '../lib/importParsers';
 import { formatCurrency, CATEGORY_ICONS } from '../lib/utils';
 import type { Transaction } from '../types/finance';
+import { supabase } from '../lib/supabase';
 
 function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
   return (
@@ -57,6 +58,9 @@ export function Settings({ onNavigate }: { onNavigate?: (page: string) => void }
   const [editName, setEditName] = useState(false);
   const [nameVal, setNameVal] = useState(user?.name ?? '');
   const [saved, setSaved] = useState(false);
+  const [parentEmail, setParentEmail] = useState('');
+  const [parentAccess, setParentAccess] = useState<{ id: string; parent_email: string; status: string } | null>(null);
+  const [sharingMessage, setSharingMessage] = useState('');
 
   // File import state
   const excelInputRef = useRef<HTMLInputElement>(null);
@@ -65,6 +69,45 @@ export function Settings({ onNavigate }: { onNavigate?: (page: string) => void }
   const [parseError, setParseError] = useState<string | null>(null);
   const [previewTxns, setPreviewTxns] = useState<Transaction[] | null>(null);
   const [importSuccessCount, setImportSuccessCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!supabase || !user) return;
+    supabase.from('parent_access').select('id, parent_email, status').eq('child_id', user.id).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setParentAccess(data);
+          setParentEmail(data.parent_email);
+        }
+      });
+  }, [user]);
+
+  const handleParentAccess = async () => {
+    if (!supabase || !user || !parentEmail.trim()) return;
+    setSharingMessage('');
+    const { data, error } = await supabase.from('parent_access').upsert({
+      child_id: user.id,
+      parent_email: parentEmail.trim().toLowerCase(),
+      status: 'pending',
+      parent_id: null,
+    }, { onConflict: 'child_id,parent_email' }).select('id, parent_email, status').single();
+    if (error) {
+      setSharingMessage(error.message);
+      return;
+    }
+    setParentAccess(data);
+    setSharingMessage('Consent request sent. Your parent can approve it after signing in.');
+  };
+
+  const handleRevokeParentAccess = async () => {
+    if (!supabase || !parentAccess) return;
+    const { error } = await supabase.from('parent_access').update({ status: 'revoked' }).eq('id', parentAccess.id);
+    if (error) {
+      setSharingMessage(error.message);
+      return;
+    }
+    setParentAccess(prev => prev ? { ...prev, status: 'revoked' } : prev);
+    setSharingMessage('Parent access revoked.');
+  };
 
   const handleSaveName = () => {
     setEditName(false);
@@ -397,6 +440,37 @@ export function Settings({ onNavigate }: { onNavigate?: (page: string) => void }
             <Check size={12} /> Profile updated!
           </motion.div>
         )}
+      </motion.div>
+
+      {/* ── PARENT ACCESS ── */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }}
+        className="rounded-3xl bg-[#1C1C1E] border border-white/10 p-5 sm:p-6 space-y-4 shadow-xl">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <Shield size={17} />
+          </div>
+          <div>
+            <h3 className="text-white font-bold text-base">Parent Access</h3>
+            <p className="text-white/40 text-xs">Share a view-only copy of your transactions with a parent.</p>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="email"
+            value={parentEmail}
+            onChange={e => setParentEmail(e.target.value)}
+            placeholder="Parent email address"
+            disabled={parentAccess?.status === 'approved'}
+            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-emerald-500/60 disabled:opacity-60"
+          />
+          {parentAccess?.status === 'approved' ? (
+            <button onClick={handleRevokeParentAccess} className="px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-sm font-semibold hover:bg-red-500/25">Revoke access</button>
+          ) : (
+            <button onClick={handleParentAccess} disabled={!parentEmail.trim()} className="px-4 py-2.5 rounded-xl bg-emerald-500 text-black text-sm font-bold disabled:opacity-40">Send consent</button>
+          )}
+        </div>
+        {parentAccess && <p className="text-xs text-white/50">Status: <span className="text-emerald-300 capitalize">{parentAccess.status}</span></p>}
+        {sharingMessage && <p className="text-xs text-emerald-300">{sharingMessage}</p>}
       </motion.div>
 
       {/* ── 📥 1. IMPORT DATA SECTION ── */}
