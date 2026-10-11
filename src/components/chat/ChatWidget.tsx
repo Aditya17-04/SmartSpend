@@ -34,45 +34,7 @@ export function ChatWidget() {
     if (isOpen) scrollToBottom();
   }, [messages, isOpen]);
 
-  const generateAIResponse = (query: string): string => {
-    const q = query.toLowerCase();
-    
-    if (q.includes('balance') || q.includes('how much money')) {
-      return `Your total balance across all accounts is ${formatCurrency(totalBalance)}.`;
-    }
-    
-    if (q.includes('spent') || q.includes('spending')) {
-      if (q.includes('most') || q.includes('highest')) {
-        const topCat = categorySpends[0];
-        if (topCat) {
-          return `You've spent the most on ${topCat.category} this month (${formatCurrency(topCat.amount)}).`;
-        }
-      }
-      return `You have spent ${formatCurrency(thisMonthSpent)} so far this month.`;
-    }
-
-    if (q.includes('food') || q.includes('dining')) {
-      const foodSpend = categorySpends.find(c => c.category === 'Food & Dining')?.amount || 0;
-      return `You've spent ${formatCurrency(foodSpend)} on Food & Dining this month.`;
-    }
-    
-    if (q.includes('save') || q.includes('savings')) {
-       const goal = state.goals[0];
-       if (goal) {
-         return `You're making progress! For your "${goal.title}" goal, you've saved ${formatCurrency(goal.currentAmount)} out of ${formatCurrency(goal.targetAmount)}.`;
-       }
-       return "You haven't set up any savings goals yet. Head over to the Goals tab to create one!";
-    }
-
-    if (q.includes('subscription') || q.includes('netflix') || q.includes('spotify')) {
-      return "Based on your recent transactions, you have active subscriptions for Netflix (₹649) and Spotify (₹119).";
-    }
-
-    // Default generic response that sounds smart
-    return "That's an interesting question. Based on your spending patterns, you're keeping most expenses under budget, though Food & Dining is trending slightly higher than usual.";
-  };
-
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return;
 
     const userMsg: Message = {
@@ -86,18 +48,40 @@ export function ChatWidget() {
     setInput('');
     setIsTyping(true);
 
-    // Simulate AI thinking delay
-    setTimeout(() => {
-      const aiResponseText = generateAIResponse(userMsg.text);
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: [
+            'You are Smart Spend AI, a warm and concise personal finance assistant.',
+            'Answer in 2-4 sentences using only the supplied financial data. Do not invent transactions or account details.',
+            `Question: ${userMsg.text}`,
+            `Financial data: ${JSON.stringify({ totalBalance, thisMonthSpent, categorySpends, goals: state.goals })}`,
+          ].join('\n\n'),
+        }),
+      });
+      const data = await response.json() as { answer?: string; error?: string };
+      if (!response.ok) throw new Error(data.error ?? 'The AI assistant is unavailable.');
+
       const aiMsg: Message = {
         id: `ai-${Date.now()}`,
         sender: 'ai',
-        text: aiResponseText,
+        text: data.answer ?? 'The AI assistant did not return an answer.',
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, aiMsg]);
+    } catch (error) {
+      const aiMsg: Message = {
+        id: `ai-error-${Date.now()}`,
+        sender: 'ai',
+        text: error instanceof Error ? error.message : 'The AI assistant is unavailable right now.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, aiMsg]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
