@@ -14,6 +14,23 @@ interface GeminiResponse {
 }
 
 const environment = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent';
+
+async function requestGemini(apiKey: string, prompt: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    return await fetch(`${GEMINI_URL}?key=${encodeURIComponent(apiKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 export default async function handler(req: ChatRequest, res: ChatResponse) {
   if (req.method !== 'POST') {
@@ -35,20 +52,23 @@ export default async function handler(req: ChatRequest, res: ChatResponse) {
   }
 
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(apiKey)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-    });
-    const data = await response.json() as GeminiResponse;
+    let response = await requestGemini(apiKey, prompt);
+    let data = await response.json() as GeminiResponse;
+
+    if (!response.ok && response.status >= 500) {
+      response = await requestGemini(apiKey, prompt);
+      data = await response.json() as GeminiResponse;
+    }
 
     if (!response.ok) {
+      console.error('Gemini request failed', { status: response.status, message: data.error?.message });
       res.status(502).json({ error: data.error?.message ?? 'Gemini request failed' });
       return;
     }
 
     res.status(200).json({ answer: data.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Gemini returned no answer.' });
   } catch (error) {
+    console.error('Gemini request error', error);
     res.status(502).json({ error: error instanceof Error ? error.message : 'Gemini request failed' });
   }
 }

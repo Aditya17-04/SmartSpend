@@ -199,10 +199,18 @@ function buildReply(query: string, snap: FinSnap): { blocks: ContentBlock[]; chi
 }
 
 async function geminiReply(query: string, snap: FinSnap): Promise<string> {
-  const res = await fetch('/api/chat', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: ['You are SmartSpend AI — a warm, concise personal finance assistant.', 'Reply in 2–4 sentences or clean bullet points using only the supplied data.', `Question: ${query}`, `Data: ${JSON.stringify(snap)}`].join('\n\n') }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  let res: Response;
+  try {
+    res = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: ['You are SmartSpend AI — a warm, concise personal finance assistant.', 'Reply in 2–4 sentences or clean bullet points using only the supplied data.', `Question: ${query}`, `Data: ${JSON.stringify(snap)}`].join('\n\n') }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   const d = await res.json() as { answer?: string; error?: string };
   if (!res.ok) throw new Error(d.error ?? 'AI unavailable');
   return d.answer ?? 'No answer returned.';
