@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Bot, User, Send, Sparkles, ShieldCheck, RotateCcw, Mic, TrendingUp, TrendingDown,
-  Wallet, Target, RefreshCw, ChevronRight,
+  Bot, User, Mic, MicOff, ArrowUp, RotateCcw,
+  Sparkles, Copy, Check, ThumbsUp, ThumbsDown,
+  TrendingUp, Wallet, Target, BarChart2,
 } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
-import { formatCurrency, CATEGORY_COLORS, CATEGORY_ICONS } from '../lib/utils';
+import { formatCurrency, CATEGORY_ICONS } from '../lib/utils';
 import type { Transaction } from '../types/finance';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -23,112 +24,124 @@ interface Message {
 type ContentBlock =
   | { type: 'text'; content: string }
   | { type: 'stat'; label: string; value: string; sub?: string; color?: string }
-  | { type: 'bar'; label: string; value: number; max: number; color: string; note?: string }
+  | { type: 'bar'; label: string; value: number; max: number; color: string }
   | { type: 'list'; items: string[] }
   | { type: 'tip'; content: string };
 
-// ─── Markdown-to-React renderer ────────────────────────────────────────────────
+// ─── Inline text renderer ──────────────────────────────────────────────────────
 
-function RichText({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+function Inline({ text }: { text: string }) {
   return (
     <>
-      {parts.map((p, i) =>
-        p.startsWith('**') && p.endsWith('**')
-          ? <strong key={i} className="text-white font-bold">{p.slice(2, -2)}</strong>
-          : <span key={i}>{p}</span>
-      )}
+      {text.split(/(₹[\d,]+|\*\*[^*]+\*\*|`[^`]+`)/g).map((p, i) => {
+        if (!p) return null;
+        if (p.startsWith('**') && p.endsWith('**'))
+          return <strong key={i} className="text-white font-semibold">{p.slice(2, -2)}</strong>;
+        if (p.startsWith('`') && p.endsWith('`'))
+          return <code key={i} className="px-1 py-0.5 rounded text-emerald-300 font-mono text-[11px] bg-emerald-900/30">{p.slice(1, -1)}</code>;
+        if (/^₹[\d,]+$/.test(p))
+          return <span key={i} className="text-emerald-400 font-mono font-bold tabular-nums">{p}</span>;
+        return <span key={i}>{p}</span>;
+      })}
     </>
   );
 }
 
-function BlockRenderer({ block }: { block: ContentBlock }) {
+function RichText({ text }: { text: string }) {
+  return (
+    <div className="space-y-2 text-[13px] leading-relaxed text-white/75">
+      {text.split('\n').map((line, i) => {
+        const t = line.trim();
+        if (!t) return <div key={i} className="h-0.5" />;
+        if (/^#{1,3} /.test(t))
+          return <p key={i} className="text-white font-bold text-sm"><Inline text={t.replace(/^#+\s/, '')} /></p>;
+        if (/^[*\-•] /.test(t))
+          return (
+            <div key={i} className="flex items-start gap-2">
+              <span className="w-1 h-1 rounded-full bg-emerald-400 flex-shrink-0 mt-2" />
+              <span><Inline text={t.slice(2)} /></span>
+            </div>
+          );
+        const nm = t.match(/^(\d+)\.\s+(.*)/);
+        if (nm)
+          return (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-emerald-500 font-mono text-[10px] flex-shrink-0 mt-0.5 w-4 text-right tabular-nums">{nm[1]}.</span>
+              <span><Inline text={nm[2]} /></span>
+            </div>
+          );
+        return <p key={i}><Inline text={line} /></p>;
+      })}
+    </div>
+  );
+}
+
+function Block({ block }: { block: ContentBlock }) {
   switch (block.type) {
-    case 'text':
-      return (
-        <p className="text-white/80 text-sm leading-relaxed whitespace-pre-line">
-          <RichText text={block.content} />
-        </p>
-      );
+    case 'text': return <RichText text={block.content} />;
     case 'stat':
       return (
-        <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/5 border border-white/8">
-          <span className="text-white/50 text-xs font-medium">{block.label}</span>
-          <div className="text-right">
-            <span className={`font-bold text-sm font-mono ${block.color ?? 'text-white'}`}>{block.value}</span>
-            {block.sub && <p className="text-white/35 text-xs">{block.sub}</p>}
+        <div className="flex items-center justify-between py-2 px-3 rounded-lg border border-white/5 bg-white/[0.02]">
+          <span className="text-white/45 text-[11px] font-medium">{block.label}</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className={`font-mono font-bold text-[13px] tabular-nums ${block.color ?? 'text-white/90'}`}>{block.value}</span>
+            {block.sub && <span className="text-white/30 text-[10px]">{block.sub}</span>}
           </div>
         </div>
       );
     case 'bar': {
       const pct = Math.min((block.value / Math.max(block.max, 1)) * 100, 100);
       return (
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs">
-            <span className="text-white/60 font-medium">{block.label}</span>
-            <span className="text-white/80 font-mono font-bold">{formatCurrency(block.value)}</span>
+        <div className="space-y-1.5 py-0.5">
+          <div className="flex justify-between text-[11px]">
+            <span className="text-white/50">{block.label}</span>
+            <span className="text-white/80 font-mono tabular-nums">{formatCurrency(block.value)} · {pct.toFixed(0)}%</span>
           </div>
-          <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 0.8, ease: 'easeOut' }}
-              className="h-full rounded-full"
-              style={{ background: block.color }}
-            />
+          <div className="h-1 bg-white/[0.05] rounded-full overflow-hidden">
+            <motion.div className="h-full rounded-full"
+              initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+              transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+              style={{ background: block.color }} />
           </div>
-          {block.note && <p className="text-white/30 text-xs">{block.note}</p>}
         </div>
       );
     }
     case 'list':
       return (
-        <ul className="space-y-1.5">
+        <div className="space-y-1.5">
           {block.items.map((item, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm text-white/75">
-              <span className="text-emerald-400 mt-0.5 flex-shrink-0">›</span>
-              <RichText text={item} />
-            </li>
+            <div key={i} className="flex items-start gap-2 text-[12px] text-white/65">
+              <span className="w-1 h-1 rounded-full bg-emerald-400/60 flex-shrink-0 mt-1.5" />
+              <span><Inline text={item} /></span>
+            </div>
           ))}
-        </ul>
+        </div>
       );
     case 'tip':
       return (
-        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20">
-          <Sparkles size={13} className="text-violet-400 flex-shrink-0 mt-0.5" />
-          <p className="text-violet-300 text-xs leading-relaxed"><RichText text={block.content} /></p>
+        <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06]">
+          <Sparkles size={12} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+          <p className="text-emerald-300/85 text-[12px] leading-relaxed"><Inline text={block.content} /></p>
         </div>
       );
-    default:
-      return null;
+    default: return null;
   }
 }
 
-// ─── Date helpers ───────────────────────────────────────────────────────────────
+// ─── Finance helpers ───────────────────────────────────────────────────────────
 
-function isThisMonth(date: string) {
-  const d = new Date(date), now = new Date();
-  return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-}
-function isLastMonth(date: string) {
-  const d = new Date(date), now = new Date();
-  const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear();
-}
-function isThisWeek(date: string) {
-  const d = new Date(date), now = new Date();
-  const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay());
-  weekStart.setHours(0, 0, 0, 0);
-  return d >= weekStart;
-}
-function isToday(date: string) {
-  const d = new Date(date), now = new Date();
-  return d.toDateString() === now.toDateString();
+const isThisMonth = (d: string) => {
+  const t = new Date(d), n = new Date();
+  return t.getMonth() === n.getMonth() && t.getFullYear() === n.getFullYear();
+};
+
+function catMap(txns: Transaction[]) {
+  const m = new Map<string, number>();
+  for (const t of txns) if (t.type === 'debit') m.set(t.category, (m.get(t.category) ?? 0) + t.amount);
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
 }
 
-// ─── AI Engine ─────────────────────────────────────────────────────────────────
-
-interface FinanceSnapshot {
+interface FinSnap {
   transactions: Transaction[];
   budgets: ReturnType<typeof useFinance>['state']['budgets'];
   goals: ReturnType<typeof useFinance>['state']['goals'];
@@ -141,574 +154,216 @@ interface FinanceSnapshot {
   userName: string;
 }
 
-function buildReply(query: string, snap: FinanceSnapshot): { blocks: ContentBlock[]; chips: string[] } {
+function buildReply(query: string, snap: FinSnap): { blocks: ContentBlock[]; chips: string[] } {
   const q = query.toLowerCase();
-  const {
-    transactions, budgets, goals, recurring, accounts,
-    thisMonthSpent: spent, thisMonthIncome: income,
-    totalBalance, effectiveBudget: budget, userName,
-  } = snap;
-
+  const { transactions, thisMonthSpent: spent, totalBalance, effectiveBudget: budget } = snap;
+  const monthTx = transactions.filter(t => isThisMonth(t.date));
   const remaining = budget > 0 ? budget - spent : 0;
   const usedPct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
+  const cats = catMap(monthTx);
 
-  // Derive filtered transaction sets
-  const thisMonthTxns = transactions.filter(t => isThisMonth(t.date));
-  const lastMonthTxns = transactions.filter(t => isLastMonth(t.date));
-  const thisWeekTxns  = transactions.filter(t => isThisWeek(t.date));
-  const todayTxns     = transactions.filter(t => isToday(t.date));
-
-  const debits = (txns: Transaction[]) => txns.filter(t => t.type === 'debit');
-  const credits = (txns: Transaction[]) => txns.filter(t => t.type === 'credit');
-  const total = (txns: Transaction[]) => txns.reduce((s, t) => s + t.amount, 0);
-
-  // Build category spend map for a set of transactions
-  const catMap = (txns: Transaction[]) => {
-    const m = new Map<string, number>();
-    debits(txns).forEach(t => m.set(t.category, (m.get(t.category) ?? 0) + t.amount));
-    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
-  };
-
-  // ── Intent: Greet ──
-  if (/^(hi|hello|hey|good morning|good evening|howdy)\b/.test(q)) {
+  if (q.includes('spend') || q.includes('spent') || q.includes('how much') || q.includes('expense'))
     return {
       blocks: [
-        { type: 'text', content: `👋 Hey ${userName}! I'm SmartSpend AI — your personal finance coach with full access to your live data.` },
-        { type: 'stat', label: 'This Month Spent', value: formatCurrency(spent), sub: budget > 0 ? `${usedPct.toFixed(0)}% of budget` : 'No budget set', color: usedPct > 90 ? 'text-red-400' : 'text-white' },
-        { type: 'stat', label: 'Total Balance', value: formatCurrency(totalBalance), color: totalBalance >= 0 ? 'text-emerald-400' : 'text-red-400' },
-        { type: 'text', content: 'What can I help you with today?' },
+        { type: 'text', content: `You've spent **${formatCurrency(spent)}** this month${cats[0] ? ` — mostly on **${cats[0][0]}**` : ''}.` },
+        ...cats.slice(0, 3).map(([c, a]) => ({ type: 'stat' as const, label: `${CATEGORY_ICONS[c] ?? '📦'} ${c}`, value: formatCurrency(a), sub: spent > 0 ? `${((a / spent) * 100).toFixed(0)}%` : undefined })),
       ],
-      chips: ['Analyze my spending', 'Show budget status', 'How can I save more?', 'Show my goals'],
+      chips: ['Budget status', 'Biggest expense', 'Save tips'],
     };
-  }
 
-  // ── Intent: Today's spending ──
-  if (/today|right now|so far today/.test(q)) {
-    const todaySpent = total(debits(todayTxns));
-    const todayIncome = total(credits(todayTxns));
-    const todayCats = catMap(todayTxns);
-    return {
-      blocks: [
-        { type: 'text', content: `📅 **Today's Financial Activity**` },
-        { type: 'stat', label: 'Spent Today', value: formatCurrency(todaySpent), color: 'text-red-300' },
-        { type: 'stat', label: 'Income Today', value: formatCurrency(todayIncome), color: 'text-emerald-400' },
-        ...(todayCats.length > 0
-          ? [{ type: 'text' as const, content: 'Category breakdown:' },
-             ...todayCats.slice(0, 4).map(([cat, amt]) => ({
-               type: 'bar' as const, label: `${CATEGORY_ICONS[cat] ?? '📦'} ${cat}`, value: amt, max: todaySpent, color: CATEGORY_COLORS[cat] ?? '#94A3B8',
-             }))]
-          : [{ type: 'text' as const, content: 'No expenses logged today yet.' }]
-        ),
-      ],
-      chips: ['Show this week', 'Analyze my spending', 'Add a tip to save today'],
-    };
-  }
+  if (q.includes('budget') || q.includes('limit') || q.includes('health'))
+    return budget <= 0
+      ? { blocks: [{ type: 'text', content: `No budget set yet. You've spent **${formatCurrency(spent)}** this month.` }], chips: ['How much spent?', 'Biggest expense'] }
+      : { blocks: [
+            { type: 'text', content: `Budget is **${formatCurrency(budget)}**. Used **${usedPct.toFixed(0)}%** with **${formatCurrency(remaining)}** remaining.` },
+            { type: 'bar', label: 'Monthly Usage', value: spent, max: budget, color: usedPct > 90 ? '#ef4444' : usedPct > 70 ? '#f59e0b' : '#10b981' },
+          ],
+          chips: ['Where to cut back?', 'How much spent?'] };
 
-  // ── Intent: This week ──
-  if (/this week|week so far|past 7 days|last 7 days/.test(q)) {
-    const weekSpent = total(debits(thisWeekTxns));
-    const weekIncome = total(credits(thisWeekTxns));
-    const weekCats = catMap(thisWeekTxns);
-    const dailyAvg = weekSpent / 7;
-    return {
-      blocks: [
-        { type: 'text', content: `📊 **This Week's Summary**` },
-        { type: 'stat', label: 'Total Spent', value: formatCurrency(weekSpent) },
-        { type: 'stat', label: 'Total Income', value: formatCurrency(weekIncome), color: 'text-emerald-400' },
-        { type: 'stat', label: 'Daily Average', value: `${formatCurrency(dailyAvg)}/day` },
-        ...(weekCats.length > 0
-          ? [{ type: 'text' as const, content: 'Top categories this week:' },
-             ...weekCats.slice(0, 4).map(([cat, amt]) => ({
-               type: 'bar' as const, label: `${CATEGORY_ICONS[cat] ?? '📦'} ${cat}`, value: amt, max: weekSpent, color: CATEGORY_COLORS[cat] ?? '#94A3B8',
-             }))]
-          : []
-        ),
-      ],
-      chips: ['Show this month', 'Compare to last month', 'Where am I overspending?'],
-    };
-  }
+  if (q.includes('big') || q.includes('largest') || q.includes('highest'))
+    return cats.length === 0
+      ? { blocks: [{ type: 'text', content: 'No expenses recorded this month yet.' }], chips: ['Budget status', 'Save tips'] }
+      : { blocks: [
+            { type: 'text', content: `Biggest: **${cats[0][0]}** at **${formatCurrency(cats[0][1])}**.` },
+            ...cats.slice(1, 4).map(([c, a]) => ({ type: 'stat' as const, label: `${CATEGORY_ICONS[c] ?? '📦'} ${c}`, value: formatCurrency(a) })),
+          ],
+          chips: ['How much spent?', 'Budget status'] };
 
-  // ── Intent: Analyze / Overview / Summary ──
-  if (/analyz|overview|summary|how am i doing|spending habit|breakdown/.test(q)) {
-    const cats = catMap(thisMonthTxns);
-    const topCat = cats[0];
-    const lastSpent = total(debits(lastMonthTxns));
-    const changeSign = lastSpent > 0 ? ((spent - lastSpent) / lastSpent * 100) : 0;
-    return {
-      blocks: [
-        { type: 'text', content: `📊 **Monthly Spending Analysis — ${new Date().toLocaleString('en-IN', { month: 'long' })}**` },
-        { type: 'stat', label: 'Total Spent', value: formatCurrency(spent), sub: budget > 0 ? `${usedPct.toFixed(0)}% of ${formatCurrency(budget)} budget` : 'No budget set' },
-        { type: 'stat', label: 'Total Income', value: formatCurrency(income), color: 'text-emerald-400' },
-        { type: 'stat', label: 'Net This Month', value: formatCurrency(income - spent), color: income >= spent ? 'text-emerald-400' : 'text-red-400', sub: income >= spent ? 'Surplus' : 'Deficit' },
-        ...(lastSpent > 0
-          ? [{ type: 'stat' as const, label: 'vs Last Month', value: `${changeSign >= 0 ? '+' : ''}${changeSign.toFixed(0)}%`, color: changeSign > 0 ? 'text-red-400' : 'text-emerald-400', sub: `Last month: ${formatCurrency(lastSpent)}` }]
-          : []
-        ),
-        ...(cats.length > 0
-          ? [
-            { type: 'text' as const, content: 'Spending by category:' },
-            ...cats.slice(0, 5).map(([cat, amt]) => ({
-              type: 'bar' as const,
-              label: `${CATEGORY_ICONS[cat] ?? '📦'} ${cat}`,
-              value: amt, max: spent,
-              color: CATEGORY_COLORS[cat] ?? '#94A3B8',
-              note: `${((amt / spent) * 100).toFixed(0)}% of total spending`,
-            })),
-          ]
-          : [{ type: 'text' as const, content: 'No transactions recorded this month yet.' }]
-        ),
-        ...(topCat ? [{ type: 'tip' as const, content: `Your biggest spend is **${topCat[0]}** at ${formatCurrency(topCat[1])}. ${topCat[1] / spent > 0.4 ? 'This is over 40% of your total — consider reviewing it.' : 'Spending looks reasonably distributed.'}` }] : []),
-      ],
-      chips: ['Where am I overspending?', 'Show budget status', 'Compare to last month', 'How can I save more?'],
-    };
-  }
+  if (q.includes('save') || q.includes('tip') || q.includes('cut'))
+    return { blocks: [{ type: 'text', content: `3 quick wins:\n* ${cats[0] ? `Trim **${cats[0][0]}** 10% → save **${formatCurrency(Math.round(cats[0][1] * 0.1))}**` : 'Categorise expenses to find savings'}\n* Cap daily spend at **${remaining > 0 ? formatCurrency(Math.round(remaining / 15)) : '₹500'}** for the rest of the month\n* Wait 24 h before any non-essential purchase over ₹1,000` }], chips: ['How much spent?', 'Budget status'] };
 
-  // ── Intent: Last month comparison ──
-  if (/last month|previous month|compare|month.*(vs|versus)|versus.*month/.test(q)) {
-    const lmSpent = total(debits(lastMonthTxns));
-    const lmIncome = total(credits(lastMonthTxns));
-    const diff = spent - lmSpent;
-    const lmCats = catMap(lastMonthTxns);
-    const thisCats = new Map(catMap(thisMonthTxns));
-    return {
-      blocks: [
-        { type: 'text', content: `📅 **Month-over-Month Comparison**` },
-        { type: 'stat', label: 'This Month Spent', value: formatCurrency(spent), color: 'text-white' },
-        { type: 'stat', label: 'Last Month Spent', value: formatCurrency(lmSpent), color: 'text-white/60' },
-        { type: 'stat', label: 'Change', value: `${diff >= 0 ? '+' : ''}${formatCurrency(Math.abs(diff))}`, color: diff > 0 ? 'text-red-400' : 'text-emerald-400', sub: diff > 0 ? 'Spending up ↑' : 'Spending down ↓' },
-        { type: 'stat', label: 'This Month Income', value: formatCurrency(income), color: 'text-emerald-400' },
-        { type: 'stat', label: 'Last Month Income', value: formatCurrency(lmIncome), color: 'text-emerald-400/60' },
-        ...(lmCats.length > 0
-          ? [{ type: 'text' as const, content: 'Category changes:' },
-             ...lmCats.slice(0, 4).map(([cat, lmAmt]) => {
-               const thisAmt = thisCats.get(cat) ?? 0;
-               const d = thisAmt - lmAmt;
-               return { type: 'stat' as const, label: `${CATEGORY_ICONS[cat] ?? '📦'} ${cat}`, value: `${d >= 0 ? '+' : ''}${formatCurrency(Math.abs(d))}`, color: d > 0 ? 'text-red-400' : 'text-emerald-400', sub: `Last: ${formatCurrency(lmAmt)} → Now: ${formatCurrency(thisAmt)}` };
-             })]
-          : []
-        ),
-      ],
-      chips: ['Analyze my spending', 'Where am I overspending?', 'Show budget status'],
-    };
-  }
-
-  // ── Intent: Category-specific question ──
-  const CATEGORY_ALIASES: Record<string, string[]> = {
-    'Food & Dining': ['food', 'dining', 'swiggy', 'zomato', 'restaurant', 'eat', 'meal', 'lunch', 'dinner', 'breakfast', 'coffee', 'cafe'],
-    'Transport': ['transport', 'travel', 'cab', 'ola', 'uber', 'rapido', 'metro', 'bus', 'petrol', 'fuel', 'commute', 'ride'],
-    'Shopping': ['shopping', 'amazon', 'myntra', 'flipkart', 'clothes', 'fashion', 'apparel', 'buy', 'purchase', 'order'],
-    'Entertainment': ['entertainment', 'netflix', 'spotify', 'movie', 'pvr', 'inox', 'music', 'stream', 'gaming'],
-    'Bills & Utilities': ['bill', 'electricity', 'jio', 'broadband', 'wifi', 'internet', 'utility', 'recharge', 'emi', 'loan'],
-    'Groceries': ['groceries', 'grocery', 'bigbasket', 'blinkit', 'vegetables', 'fruits', 'supermarket'],
-    'Health': ['health', 'gym', 'doctor', 'medicine', 'pharmacy', 'medical', 'wellness', 'fitness'],
-    'Education': ['education', 'course', 'udemy', 'book', 'tuition', 'class', 'learn', 'study'],
-    'Rent': ['rent', 'house', 'housing', 'flat', 'apartment', 'pg'],
-    'Investment': ['investment', 'invest', 'sip', 'mutual fund', 'stock', 'zerodha', 'coin'],
-    'Insurance': ['insurance', 'lic', 'policy', 'premium', 'coverage'],
-  };
-
-  for (const [cat, aliases] of Object.entries(CATEGORY_ALIASES)) {
-    if (aliases.some(a => q.includes(a))) {
-      const catThis = catMap(thisMonthTxns).find(([c]) => c === cat)?.[1] ?? 0;
-      const catLast = catMap(lastMonthTxns).find(([c]) => c === cat)?.[1] ?? 0;
-      const catBudget = budgets.find(b => b.category === cat);
-      const catTxns = debits(thisMonthTxns).filter(t => t.category === cat);
-      const change = catLast > 0 ? ((catThis - catLast) / catLast * 100) : 0;
-
-      return {
-        blocks: [
-          { type: 'text', content: `${CATEGORY_ICONS[cat] ?? '📦'} **${cat} Breakdown — This Month**` },
-          { type: 'stat', label: 'Total Spent', value: formatCurrency(catThis), color: catThis > 0 ? 'text-white' : 'text-white/40' },
-          ...(catLast > 0 ? [{ type: 'stat' as const, label: 'vs Last Month', value: `${change >= 0 ? '+' : ''}${change.toFixed(0)}%`, color: change > 0 ? 'text-red-400' : 'text-emerald-400', sub: `Last month: ${formatCurrency(catLast)}` }] : []),
-          ...(catBudget ? [{ type: 'bar' as const, label: 'Budget usage', value: catThis, max: catBudget.limit, color: catThis > catBudget.limit ? '#EF4444' : CATEGORY_COLORS[cat] ?? '#94A3B8', note: `${formatCurrency(catThis)} of ${formatCurrency(catBudget.limit)} budget` }] : []),
-          ...(catTxns.length > 0
-            ? [{ type: 'text' as const, content: `Recent ${cat} transactions:` },
-               { type: 'list' as const, items: catTxns.slice(0, 5).map(t => `**${t.title}** — ${formatCurrency(t.amount)} on ${new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`) }]
-            : [{ type: 'text' as const, content: `No ${cat} transactions recorded this month.` }]
-          ),
-          ...(catThis > 0 && catBudget && catThis > catBudget.limit
-            ? [{ type: 'tip' as const, content: `You've exceeded your ${cat} budget by **${formatCurrency(catThis - catBudget.limit)}**. Consider cutting back for the rest of the month.` }]
-            : catThis > 0
-            ? [{ type: 'tip' as const, content: `${cat} spending is ${catBudget ? `${((catThis / catBudget.limit) * 100).toFixed(0)}% of your ${formatCurrency(catBudget.limit)} budget.` : 'tracked but no budget set for this category.'}` }]
-            : []
-          ),
-        ],
-        chips: ['Analyze my spending', 'Show budget status', 'Compare to last month', `Tips to reduce ${cat.split(' ')[0].toLowerCase()} spending`],
-      };
-    }
-  }
-
-  // ── Intent: Budget status ──
-  if (/budget|limit|allowance|how much (left|remaining|do i have)|remaining/.test(q)) {
-    const budgetStatuses = budgets.map(b => {
-      const s = catMap(thisMonthTxns).find(([c]) => c === b.category)?.[1] ?? 0;
-      return { ...b, spent: s, pct: Math.min((s / b.limit) * 100, 100), over: s > b.limit };
-    }).sort((a, b) => b.pct - a.pct);
-
-    return {
-      blocks: [
-        { type: 'text', content: `💰 **Budget Status — ${new Date().toLocaleString('en-IN', { month: 'long' })}**` },
-        { type: 'stat', label: 'Overall Spent', value: formatCurrency(spent), sub: budget > 0 ? `${usedPct.toFixed(0)}% of ${formatCurrency(budget)}` : 'No total budget set' },
-        { type: 'stat', label: 'Overall Remaining', value: budget > 0 ? formatCurrency(remaining) : '—', color: remaining > 0 ? 'text-emerald-400' : 'text-red-400' },
-        ...(budgetStatuses.length > 0
-          ? [
-            { type: 'text' as const, content: 'By category:' },
-            ...budgetStatuses.map(b => ({
-              type: 'bar' as const,
-              label: `${CATEGORY_ICONS[b.category] ?? '📦'} ${b.category}`,
-              value: b.spent,
-              max: b.limit,
-              color: b.over ? '#EF4444' : b.pct >= 80 ? '#F59E0B' : CATEGORY_COLORS[b.category] ?? '#94A3B8',
-              note: `${formatCurrency(b.spent)} / ${formatCurrency(b.limit)}${b.over ? ' — EXCEEDED' : ` — ${formatCurrency(b.limit - b.spent)} left`}`,
-            })),
-          ]
-          : [{ type: 'text' as const, content: 'No category budgets configured yet. Go to the Budget tab to set limits.' }]
-        ),
-        ...(budgetStatuses.filter(b => b.over).length > 0
-          ? [{ type: 'tip' as const, content: `**${budgetStatuses.filter(b => b.over).length} categories** are over budget. Focus on reducing ${budgetStatuses.filter(b => b.over).map(b => b.category).join(', ')} spending.` }]
-          : budgetStatuses.length > 0
-          ? [{ type: 'tip' as const, content: `All budgets are on track! ${remaining > 0 ? `You have **${formatCurrency(remaining)}** remaining for the month.` : ''}` }]
-          : []
-        ),
-      ],
-      chips: ['How can I save more?', 'Analyze my spending', 'Compare to last month'],
-    };
-  }
-
-  // ── Intent: Goals ──
-  if (/goal|saving|target|dream|fund|vacation|gadget/.test(q)) {
-    if (goals.length === 0) {
-      return {
-        blocks: [
-          { type: 'text', content: `🎯 **Savings Goals**\n\nYou haven't set any savings goals yet. Head to the Goals section to create your first goal!` },
-          { type: 'tip', content: 'Common goals: Emergency Fund, Vacation, New Device, or Car Down Payment.' },
-        ],
-        chips: ['How can I save more?', 'Show budget status', 'Analyze my spending'],
-      };
-    }
-    return {
-      blocks: [
-        { type: 'text', content: `🎯 **Your Savings Goals**` },
-        ...goals.map(g => {
-          const pct = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
-          const left = g.targetAmount - g.currentAmount;
-          const daysLeft = Math.max(0, Math.ceil((new Date(g.targetDate).getTime() - Date.now()) / 86400000));
-          return {
-            type: 'bar' as const,
-            label: `${g.emoji} ${g.title}`,
-            value: g.currentAmount,
-            max: g.targetAmount,
-            color: g.color,
-            note: `${formatCurrency(g.currentAmount)} of ${formatCurrency(g.targetAmount)} (${pct.toFixed(0)}%) — ${formatCurrency(left)} left${daysLeft > 0 ? ` · ${daysLeft} days remaining` : ' · Deadline passed'}`,
-          };
-        }),
-        ...(goals.some(g => (g.targetAmount - g.currentAmount) > 0)
-          ? [{ type: 'tip' as const, content: `Saving **${formatCurrency(Math.ceil(goals.reduce((s, g) => s + Math.max(0, g.targetAmount - g.currentAmount), 0) / 12))} / month** would help you hit all your goals within a year.` }]
-          : [{ type: 'tip' as const, content: '🎉 All goals reached! Time to set new ones.' }]
-        ),
-      ],
-      chips: ['How can I save more?', 'Analyze my spending', 'Show budget status'],
-    };
-  }
-
-  // ── Intent: Recurring / Subscriptions ──
-  if (/recurring|subscription|subscri|auto.?pay|standing|emi|monthly charge|netflix|spotify|amazon prime/.test(q)) {
-    const activeRecurring = recurring.filter(r => r.isActive);
-    const monthlyDebits = activeRecurring.filter(r => r.type === 'debit');
-    const monthlyTotal = monthlyDebits.reduce((s, r) => s + r.amount, 0);
-    return {
-      blocks: [
-        { type: 'text', content: `🔁 **Recurring Payments Overview**` },
-        { type: 'stat', label: 'Total Monthly Commitments', value: formatCurrency(monthlyTotal), sub: `${monthlyDebits.length} active recurring charges` },
-        ...(monthlyDebits.length > 0
-          ? [{ type: 'list' as const, items: monthlyDebits.map(r => `**${r.title}** (${r.merchant}) — ${formatCurrency(r.amount)} / ${r.frequency}, next: ${new Date(r.nextDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`) }]
-          : [{ type: 'text' as const, content: 'No active recurring payments recorded.' }]
-        ),
-        ...(monthlyTotal > 0
-          ? [{ type: 'tip' as const, content: `Your recurring commitments total **${formatCurrency(monthlyTotal)} / month** (${budget > 0 ? `${((monthlyTotal / budget) * 100).toFixed(0)}% of your budget` : 'no budget set to compare'}). Review if all are necessary.` }]
-          : []
-        ),
-      ],
-      chips: ['Show budget status', 'Analyze my spending', 'How can I save more?'],
-    };
-  }
-
-  // ── Intent: Accounts / Net Worth ──
-  if (/account|balance|net worth|cash|wallet|upi|card|bank/.test(q)) {
-    return {
-      blocks: [
-        { type: 'text', content: `💳 **Account Balances**` },
-        ...accounts.map(a => ({
-          type: 'stat' as const,
-          label: `${a.icon} ${a.name} (${a.bankName})`,
-          value: formatCurrency(a.balance),
-          color: a.balance >= 0 ? 'text-emerald-400' : 'text-red-400',
-          sub: a.balance >= 0 ? 'Available' : 'Deficit',
-        })),
-        { type: 'stat', label: '💼 Total Net Worth', value: formatCurrency(totalBalance), color: totalBalance >= 0 ? 'text-emerald-400' : 'text-red-400' },
-        { type: 'tip', content: `Balances are calculated from your recorded income and expense entries.` },
-      ],
-      chips: ['Analyze my spending', 'Show budget status', 'Show my goals'],
-    };
-  }
-
-  // ── Intent: Save more / Tips ──
-  if (/save|saving|tips?|cut.?back|reduce|spend less|economiz/.test(q)) {
-    const cats = catMap(thisMonthTxns);
-    const topThree = cats.slice(0, 3);
-    return {
-      blocks: [
-        { type: 'text', content: `💡 **Personalized Money-Saving Tips**` },
-        ...(topThree.length > 0
-          ? [
-            { type: 'text' as const, content: `Based on your spending, here's where you can save the most:` },
-            { type: 'list' as const, items: topThree.map(([cat, amt]) => {
-              const saving = Math.round(amt * 0.2);
-              return `**${cat}** (${formatCurrency(amt)}): Cutting 20% could save you **${formatCurrency(saving)} / month**.`;
-            }) },
-          ]
-          : []
-        ),
-        { type: 'list', items: [
-          '**Meal prep on weekends** — saves ₹400–800/month on food delivery.',
-          '**24-hour rule** — wait a day before non-essential purchases over ₹500.',
-          '**Cancel unused subscriptions** — check recurring payments for dormant ones.',
-          '**Auto-save rule** — transfer 10% of income to savings on payday.',
-          '**Use UPI cash-back offers** — CRED, GPay rewards can add ₹100–300/month.',
-        ]},
-        ...(income > 0 ? [{ type: 'stat' as const, label: 'Ideal Savings Target (20%)', value: formatCurrency(income * 0.2), sub: `${income > 0 ? ((income - spent) / income * 100).toFixed(0) : 0}% currently saved` }] : []),
-        { type: 'tip', content: remaining > 0 ? `You have **${formatCurrency(remaining)}** remaining in your budget. Great opportunity to put some into savings!` : `No budget set — add one in the Budget tab to track your spending limits.` },
-      ],
-      chips: ['Show my goals', 'Show budget status', 'Analyze my spending'],
-    };
-  }
-
-  // ── Intent: Income / Salary ──
-  if (/income|salary|earn|credit|received|freelance|how much (did i make|i earn)/.test(q)) {
-    const incomeThisMonth = credits(thisMonthTxns);
-    const incomeLastMonth = credits(lastMonthTxns);
-    return {
-      blocks: [
-        { type: 'text', content: `💰 **Income Overview**` },
-        { type: 'stat', label: 'This Month Income', value: formatCurrency(income), color: 'text-emerald-400' },
-        { type: 'stat', label: 'Last Month Income', value: formatCurrency(total(incomeLastMonth)), color: 'text-emerald-400/60' },
-        { type: 'stat', label: 'Savings Rate', value: income > 0 ? `${((income - spent) / income * 100).toFixed(0)}%` : '—', color: income > spent ? 'text-emerald-400' : 'text-red-400', sub: income > spent ? 'Positive cashflow' : 'Spending more than earning' },
-        ...(incomeThisMonth.length > 0
-          ? [{ type: 'list' as const, items: incomeThisMonth.map(t => `**${t.title}** (${t.merchant}) — ${formatCurrency(t.amount)} on ${new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`) }]
-          : [{ type: 'text' as const, content: 'No income recorded this month yet.' }]
-        ),
-      ],
-      chips: ['Analyze my spending', 'Show my goals', 'How can I save more?'],
-    };
-  }
-
-  // ── Intent: Affordable check ──
-  if (/afford|can i buy|should i buy|worth it|₹\d+|rs\.?\s?\d+/.test(q)) {
-    const numMatch = q.match(/[₹rs.]*\s*(\d[\d,]*)/);
-    const amount = numMatch ? parseInt(numMatch[1].replace(/,/g, '')) : 0;
-    const canAffordFromBudget = remaining >= amount;
-    const canAffordFromBalance = totalBalance >= amount;
-    return {
-      blocks: [
-        { type: 'text', content: `🛒 **Affordability Check${amount > 0 ? ` — ${formatCurrency(amount)}` : ''}**` },
-        { type: 'stat', label: 'Monthly Budget Remaining', value: budget > 0 ? formatCurrency(remaining) : '—', color: budget > 0 && remaining > 0 ? 'text-emerald-400' : 'text-white/40' },
-        { type: 'stat', label: 'Total Account Balance', value: formatCurrency(totalBalance), color: totalBalance > 0 ? 'text-emerald-400' : 'text-red-400' },
-        ...(amount > 0
-          ? [{
-            type: 'text' as const,
-            content: canAffordFromBudget && canAffordFromBalance
-              ? `✅ **Yes, you can afford ${formatCurrency(amount)}!** It fits within both your budget and account balance.`
-              : canAffordFromBalance
-              ? `⚠️ You have enough in your account, but this would **exceed your monthly budget**. Consider waiting till next month.`
-              : `❌ **Not advisable right now.** Your current balance (${formatCurrency(totalBalance)}) is less than ${formatCurrency(amount)}.`,
-          }]
-          : [{ type: 'tip' as const, content: 'Include the amount in your question (e.g., "Can I afford ₹5,000?") for a precise answer.' }]
-        ),
-      ],
-      chips: ['Show budget status', 'How can I save more?', 'Check my account balances'],
-    };
-  }
-
-  // ── Intent: Daily budget target ──
-  if (/daily|per day|each day|day limit/.test(q)) {
-    const now = new Date();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const daysLeft = daysInMonth - now.getDate();
-    const dailySafe = daysLeft > 0 && remaining > 0 ? Math.round(remaining / daysLeft) : 0;
-    const dailyActual = now.getDate() > 0 ? Math.round(spent / now.getDate()) : 0;
-    return {
-      blocks: [
-        { type: 'text', content: `📅 **Daily Spending Target**` },
-        { type: 'stat', label: 'Days Left in Month', value: `${daysLeft} days` },
-        { type: 'stat', label: 'Budget Remaining', value: budget > 0 ? formatCurrency(remaining) : '—' },
-        { type: 'stat', label: 'Safe Daily Limit', value: dailySafe > 0 ? `${formatCurrency(dailySafe)} / day` : '—', color: 'text-emerald-400', sub: 'To stay within budget' },
-        { type: 'stat', label: 'Actual Daily Average', value: `${formatCurrency(dailyActual)} / day`, sub: 'Based on current month', color: dailyActual > dailySafe && dailySafe > 0 ? 'text-red-400' : 'text-white' },
-        { type: 'tip', content: dailySafe > 0 ? `Staying under **${formatCurrency(dailySafe)}/day** for the remaining ${daysLeft} days will keep you within budget.` : 'Set a budget in the Budget tab to get a daily spending target.' },
-      ],
-      chips: ['Show budget status', 'How can I save more?', 'Analyze my spending'],
-    };
-  }
-
-  // ── Intent: Overspending ──
-  if (/overspend|over.?budget|exceed|too much|limit/.test(q)) {
-    const budgetStatuses = budgets.map(b => {
-      const s = catMap(thisMonthTxns).find(([c]) => c === b.category)?.[1] ?? 0;
-      return { ...b, spent: s, over: s > b.limit, pct: (s / b.limit) * 100 };
-    }).filter(b => b.over || b.pct >= 70).sort((a, b) => b.pct - a.pct);
-
-    if (budgetStatuses.length === 0) {
-      return {
-        blocks: [
-          { type: 'text', content: `✅ **No Overspending Detected!**\n\nAll your spending categories are within budget this month. Keep it up!` },
-          { type: 'tip', content: `You have **${formatCurrency(remaining)}** left in your monthly budget.` },
-        ],
-        chips: ['How can I save more?', 'Analyze my spending', 'Show my goals'],
-      };
-    }
-
-    const cats = catMap(thisMonthTxns);
-    return {
-      blocks: [
-        { type: 'text', content: `⚠️ **Overspending Detected**` },
-        ...budgetStatuses.map(b => ({
-          type: 'bar' as const,
-          label: `${CATEGORY_ICONS[b.category] ?? '📦'} ${b.category}`,
-          value: b.spent,
-          max: b.limit,
-          color: b.over ? '#EF4444' : '#F59E0B',
-          note: b.over ? `${formatCurrency(b.spent - b.limit)} over limit` : `${b.pct.toFixed(0)}% used — approaching limit`,
-        })),
-        { type: 'list', items: budgetStatuses.filter(b => b.over).map(b => `**${b.category}**: ${formatCurrency(b.spent - b.limit)} over. Try to freeze ${b.category} spending for the rest of the month.`) },
-        ...(cats.length > 0 ? [{ type: 'tip' as const, content: `Your top uncapped spend is **${cats[0][0]}** (${formatCurrency(cats[0][1])}). Set a budget limit to control it.` }] : []),
-      ],
-      chips: ['How can I save more?', 'Show budget status', 'Analyze my spending'],
-    };
-  }
-
-  // ── Intent: Top / Biggest / Highest ──
-  if (/top|biggest|highest|most|major|where did (i|my money)/.test(q)) {
-    const cats = catMap(thisMonthTxns);
-    if (cats.length === 0) {
-      return {
-        blocks: [{ type: 'text', content: 'No expenses recorded this month yet. Start logging transactions to see your top spending categories!' }],
-        chips: ['Analyze my spending', 'Show budget status'],
-      };
-    }
-    return {
-      blocks: [
-        { type: 'text', content: `🏆 **Top Spending Categories This Month**` },
-        ...cats.slice(0, 6).map(([cat, amt], i) => ({
-          type: 'bar' as const,
-          label: `#${i + 1} ${CATEGORY_ICONS[cat] ?? '📦'} ${cat}`,
-          value: amt,
-          max: cats[0][1],
-          color: CATEGORY_COLORS[cat] ?? '#94A3B8',
-          note: `${formatCurrency(amt)} · ${((amt / spent) * 100).toFixed(0)}% of total spending`,
-        })),
-        { type: 'tip', content: `**${cats[0][0]}** is your #1 expense at ${formatCurrency(cats[0][1])}. ${budgets.find(b => b.category === cats[0][0]) ? 'You have a budget set for it.' : 'Consider setting a budget limit for this category.'}` },
-      ],
-      chips: ['Show budget status', 'How can I save more?', `How much on ${cats[0][0].split(' ')[0].toLowerCase()}?`],
-    };
-  }
-
-  // ── Fallback ──
-  const cats = catMap(thisMonthTxns);
   return {
-    blocks: [
-      { type: 'text', content: `🤖 I'm not sure I fully understood that, but here's your current financial snapshot:` },
-      { type: 'stat', label: 'This Month Spent', value: formatCurrency(spent), sub: budget > 0 ? `${usedPct.toFixed(0)}% of ${formatCurrency(budget)} budget` : 'No budget set' },
-      { type: 'stat', label: 'Total Balance', value: formatCurrency(totalBalance), color: totalBalance >= 0 ? 'text-emerald-400' : 'text-red-400' },
-      ...(cats.length > 0 ? [{ type: 'stat' as const, label: 'Top Spend', value: `${CATEGORY_ICONS[cats[0][0]] ?? '📦'} ${cats[0][0]}`, sub: formatCurrency(cats[0][1]) }] : []),
-      { type: 'text', content: 'Try asking me:' },
-      { type: 'list', items: ['Analyze my spending', 'How much did I spend on food?', 'Show my budget status', 'Can I afford ₹3,000?', 'Compare to last month', 'Give me saving tips'] },
-    ],
-    chips: ['Analyze my spending', 'Show budget status', 'How can I save more?', 'Top spending categories'],
+    blocks: [{ type: 'text', content: `* **Spent this month**: ${formatCurrency(spent)}\n* **Balance**: ${formatCurrency(totalBalance)}\n* **Budget**: ${budget > 0 ? `${formatCurrency(budget)} (${usedPct.toFixed(0)}% used)` : 'Not set'}` }],
+    chips: ['How much spent?', 'Budget status', 'Biggest expense'],
   };
 }
 
-async function requestGeminiReply(query: string, snap: FinanceSnapshot): Promise<string> {
-  const response = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt: [
-        'You are SmartSpend AI, a concise personal finance assistant.',
-        'Answer only from the supplied user data. If the data does not answer the question, say so clearly.',
-        'Do not invent transactions, balances, dates, or recommendations. This is educational information, not financial advice.',
-        `User question: ${query}`,
-        `User finance data: ${JSON.stringify(snap)}`,
-      ].join('\n\n'),
-    }),
+async function geminiReply(query: string, snap: FinSnap): Promise<string> {
+  const res = await fetch('/api/chat', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: ['You are SmartSpend AI — a warm, concise personal finance assistant.', 'Reply in 2–4 sentences or clean bullet points using only the supplied data.', `Question: ${query}`, `Data: ${JSON.stringify(snap)}`].join('\n\n') }),
   });
-  const data = await response.json() as { answer?: string; error?: string };
-  if (!response.ok) throw new Error(data.error ?? 'Unable to contact Gemini');
-  return data.answer ?? 'Gemini returned no answer.';
+  const d = await res.json() as { answer?: string; error?: string };
+  if (!res.ok) throw new Error(d.error ?? 'AI unavailable');
+  return d.answer ?? 'No answer returned.';
 }
 
-// ─── Suggested Prompts ──────────────────────────────────────────────────────────
+// ─── Left Panel — Live Context ─────────────────────────────────────────────────
 
-const PROMPT_GROUPS = [
-  {
-    label: 'Spending',
-    icon: TrendingUp,
-    prompts: ['Analyze my spending', 'Top spending categories', 'Compare to last month', "Today's expenses"],
-  },
-  {
-    label: 'Budget',
-    icon: Wallet,
-    prompts: ['Show budget status', 'Where am I overspending?', "What's my daily limit?", 'Check food spending'],
-  },
-  {
-    label: 'Planning',
-    icon: Target,
-    prompts: ['How can I save more?', 'Show my goals', 'Check my subscriptions', 'Can I afford ₹5,000?'],
-  },
-];
+function ContextPanel({ snap, onQuery }: { snap: FinSnap; onQuery: (q: string) => void }) {
+  const { effectiveBudget: budget, thisMonthSpent: spent, totalBalance, transactions } = snap;
+  const usedPct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
+  const remaining = budget > 0 ? budget - spent : 0;
+  const cats = catMap(transactions.filter(t => isThisMonth(t.date)));
 
-// ─── Typewriter hook ────────────────────────────────────────────────────────────
+  const QUERIES = [
+    { label: 'Spending recap',   q: 'How much have I spent this month?',   icon: TrendingUp,  color: 'text-violet-400' },
+    { label: 'Budget health',    q: 'Show my budget status',                icon: Wallet,      color: 'text-blue-400'   },
+    { label: 'Top category',     q: 'What is my biggest expense?',          icon: BarChart2,   color: 'text-amber-400'  },
+    { label: 'Save tips',        q: 'Tips to save money this month',        icon: Target,      color: 'text-emerald-400'},
+  ];
 
-function useTypewriterText(target: string, active: boolean) {
-  const [displayed, setDisplayed] = useState('');
-  useEffect(() => {
-    if (!active) { setDisplayed(target); return; }
-    setDisplayed('');
-    let i = 0;
-    const id = setInterval(() => {
-      i++;
-      setDisplayed(target.slice(0, i));
-      if (i >= target.length) clearInterval(id);
-    }, 12);
-    return () => clearInterval(id);
-  }, [target, active]);
-  return displayed;
-}
-
-// ─── Message bubble ─────────────────────────────────────────────────────────────
-
-function AIBubble({ msg, isLatest }: { msg: Message; isLatest: boolean }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex items-start gap-3"
-    >
-      <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-black flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md shadow-emerald-500/20">
-        <Bot size={16} className="stroke-[2.5]" />
-      </div>
-      <div className="flex-1 min-w-0 space-y-2">
-        <div className="rounded-3xl rounded-tl-sm px-4 py-3.5 bg-white/5 border border-white/10 shadow-sm space-y-2.5">
-          {msg.blocks.map((block, i) => <BlockRenderer key={i} block={block} />)}
-          <p className="text-[10px] text-white/25 font-mono text-right pt-1">{msg.time}</p>
+    <div className="w-64 flex-shrink-0 flex flex-col gap-3 overflow-y-auto pr-1 custom-scrollbar">
+
+      {/* Balance Card */}
+      <div className="rounded-2xl p-4 relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #5B21B6 0%, #1D4ED8 70%, #0EA5E9 100%)' }}>
+        {/* Decorative blobs */}
+        <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute bottom-0 left-4 w-16 h-16 rounded-full bg-blue-300/10 blur-xl" />
+
+        <div className="relative z-10">
+          <p className="text-white/60 text-[10px] font-semibold uppercase tracking-widest mb-1">Total Balance</p>
+          <p className={`font-black font-mono text-2xl tabular-nums tracking-tight ${totalBalance < 0 ? 'text-red-300' : 'text-white'}`}>
+            {formatCurrency(totalBalance)}
+          </p>
         </div>
-        {msg.chips && msg.chips.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 pl-1">
-            {msg.chips.map(chip => (
-              <span key={chip} className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] font-medium flex items-center gap-1">
-                <ChevronRight size={10} />
-                {chip}
+      </div>
+
+      {/* Budget ring card */}
+      <div className="rounded-2xl p-4 bg-[#14161A] border border-white/[0.06]">
+        <p className="text-white/40 text-[10px] uppercase tracking-widest font-semibold mb-3">Monthly Budget</p>
+
+        {budget > 0 ? (
+          <div className="space-y-2">
+            {/* Bar */}
+            <div className="h-1.5 w-full bg-white/[0.06] rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all"
+                style={{ width: `${usedPct}%`, background: usedPct > 90 ? '#ef4444' : usedPct > 70 ? '#f59e0b' : '#10b981' }} />
+            </div>
+            <div className="flex justify-between text-[11px] font-mono tabular-nums">
+              <span className="text-white/40">Spent</span>
+              <span className="text-white/70">{formatCurrency(spent)} <span className="text-white/30">/ {formatCurrency(budget)}</span></span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-white/5">
+              <span className="text-white/35 text-[10px]">Remaining</span>
+              <span className={`font-mono font-bold text-sm tabular-nums ${remaining < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                {formatCurrency(remaining)}
               </span>
-            ))}
+            </div>
           </div>
+        ) : (
+          <p className="text-white/30 text-[12px]">No budget configured</p>
+        )}
+      </div>
+
+      {/* Top categories */}
+      {cats.length > 0 && (
+        <div className="rounded-2xl p-4 bg-[#14161A] border border-white/[0.06]">
+          <p className="text-white/40 text-[10px] uppercase tracking-widest font-semibold mb-3">Top Spending</p>
+          <div className="space-y-2.5">
+            {cats.slice(0, 3).map(([cat, amt]) => {
+              const share = spent > 0 ? (amt / spent) * 100 : 0;
+              return (
+                <div key={cat} className="space-y-1">
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-white/65">{CATEGORY_ICONS[cat] ?? '📦'} {cat}</span>
+                    <span className="font-mono text-white/80 tabular-nums">{formatCurrency(amt)}</span>
+                  </div>
+                  <div className="h-0.5 w-full bg-white/[0.05] rounded-full overflow-hidden">
+                    <div className="h-full bg-violet-500/60 rounded-full" style={{ width: `${share}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Quick actions */}
+      <div className="rounded-2xl p-4 bg-[#14161A] border border-white/[0.06]">
+        <p className="text-white/40 text-[10px] uppercase tracking-widest font-semibold mb-2.5">Quick Analysis</p>
+        <div className="space-y-1">
+          {QUERIES.map(({ label, q, icon: Icon, color }) => (
+            <button key={q} onClick={() => onQuery(q)}
+              className="w-full flex items-center gap-2.5 p-2 rounded-xl hover:bg-white/[0.04] text-left transition-all group cursor-pointer active:scale-[0.98]">
+              <Icon size={13} className={`${color} flex-shrink-0`} strokeWidth={1.75} />
+              <span className="text-white/55 group-hover:text-white/85 text-[12px] font-medium transition-colors">{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+// ─── Bubbles ───────────────────────────────────────────────────────────────────
+
+const spring = { type: 'spring' as const, stiffness: 380, damping: 32 };
+
+function AIBubble({ msg, onSend }: { msg: Message; onSend: (t: string) => void }) {
+  const [copied, setCopied] = useState(false);
+  const [fb, setFb] = useState<'up' | 'down' | null>(null);
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={spring}
+      className="flex items-start gap-2.5">
+      <div className="w-7 h-7 rounded-lg bg-[#0E1F16] border border-emerald-800/50 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <Bot size={13} className="text-emerald-400" strokeWidth={1.75} />
+      </div>
+
+      <div className="flex-1 min-w-0 space-y-2">
+        <div className="rounded-2xl rounded-tl-sm bg-[#13151A] border border-white/[0.07]">
+          {/* Header */}
+          <div className="flex items-center justify-between px-3.5 py-2 border-b border-white/[0.05]">
+            <span className="text-[10px] font-bold text-emerald-400 tracking-widest uppercase">SmartSpend AI</span>
+            <span className="text-[10px] text-white/25 font-mono tabular-nums">{msg.time}</span>
+          </div>
+
+          {/* Body */}
+          <div className="px-3.5 py-3 space-y-2.5">
+            {msg.blocks.map((b, i) => <Block key={i} block={b} />)}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between px-3.5 py-2 border-t border-white/[0.04]">
+            <button onClick={() => {
+              navigator.clipboard.writeText(msg.blocks.map(b => b.type === 'text' ? b.content : '').filter(Boolean).join('\n'));
+              setCopied(true); setTimeout(() => setCopied(false), 2000);
+            }} className="flex items-center gap-1 text-[11px] text-white/25 hover:text-white/60 transition-colors">
+              {copied ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+              <span>{copied ? 'Copied' : 'Copy'}</span>
+            </button>
+            <div className="flex items-center gap-0.5">
+              <button onClick={() => setFb(f => f === 'up' ? null : 'up')} className={`p-1 rounded transition-colors ${fb === 'up' ? 'text-emerald-400' : 'text-white/20 hover:text-white/50'}`}><ThumbsUp size={10} /></button>
+              <button onClick={() => setFb(f => f === 'down' ? null : 'down')} className={`p-1 rounded transition-colors ${fb === 'down' ? 'text-red-400' : 'text-white/20 hover:text-white/50'}`}><ThumbsDown size={10} /></button>
+            </div>
+          </div>
+        </div>
+
+        {/* Chips */}
+        {msg.chips && msg.chips.length > 0 && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
+            className="flex flex-wrap gap-1.5">
+            {msg.chips.map(c => (
+              <button key={c} onClick={() => onSend(c)}
+                className="px-2.5 py-1 rounded-lg text-[11px] text-white/45 hover:text-white/80 bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] hover:border-emerald-500/25 transition-all cursor-pointer active:scale-95">
+                {c}
+              </button>
+            ))}
+          </motion.div>
         )}
       </div>
     </motion.div>
@@ -717,266 +372,205 @@ function AIBubble({ msg, isLatest }: { msg: Message; isLatest: boolean }) {
 
 function UserBubble({ msg }: { msg: Message }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex items-start gap-3 justify-end"
-    >
-      <div className="max-w-[80%] space-y-1">
-        <div className="rounded-3xl rounded-tr-sm px-4 py-3 bg-emerald-500 text-black font-semibold text-sm shadow-lg shadow-emerald-500/10">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={spring}
+      className="flex items-end gap-2 justify-end">
+      <div className="max-w-[76%] space-y-1">
+        <div className="px-3.5 py-2.5 rounded-2xl rounded-tr-sm text-white/90 text-[13px] leading-relaxed"
+          style={{ background: 'linear-gradient(135deg, #5B21B6 0%, #4338CA 100%)', boxShadow: '0 4px 20px rgba(91,33,182,0.25)' }}>
           {msg.blocks[0]?.type === 'text' ? msg.blocks[0].content : ''}
-          <p className="text-[10px] text-black/40 font-mono text-right mt-1.5">{msg.time}</p>
         </div>
+        <div className="text-right text-[10px] text-white/20 font-mono tabular-nums pr-0.5">{msg.time}</div>
       </div>
-      <div className="w-8 h-8 rounded-2xl bg-white/10 text-white flex items-center justify-center flex-shrink-0 mt-0.5">
-        <User size={15} />
+      <div className="w-7 h-7 rounded-lg bg-[#1E1B33] border border-violet-700/30 flex items-center justify-center flex-shrink-0 text-violet-400">
+        <User size={12} strokeWidth={1.75} />
       </div>
     </motion.div>
   );
 }
 
-// ─── Main Component ─────────────────────────────────────────────────────────────
+function TypingDots() {
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+      className="flex items-center gap-2.5">
+      <div className="w-7 h-7 rounded-lg bg-[#0E1F16] border border-emerald-800/50 flex items-center justify-center flex-shrink-0">
+        <Bot size={12} className="text-emerald-400" strokeWidth={1.75} />
+      </div>
+      <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-[#13151A] border border-white/[0.07] flex items-center gap-1.5">
+        {[0, 200, 400].map(d => (
+          <motion.span key={d} className="w-1.5 h-1.5 rounded-full bg-emerald-400/60"
+            animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.2, delay: d / 1000 }} />
+        ))}
+      </div>
+    </motion.div>
+  );
+}
 
-const INIT_CHIPS = ['Analyze my spending', 'Show budget status', 'How can I save more?', 'Show my goals'];
+// ─── Main ──────────────────────────────────────────────────────────────────────
 
 export function AskSmartSpend() {
-  const finance = useFinance();
+  const { state, thisMonthSpent, thisMonthIncome, totalBalance } = useFinance();
   const { user } = useAuth();
-  const { state, thisMonthSpent, thisMonthIncome, totalBalance, categoryBudgetStatus } = finance;
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
-  const effectiveBudget = useMemo(() => {
-    if (state.monthlyBudget && state.monthlyBudget > 0) return state.monthlyBudget;
+  const effectiveBudget = useMemo((): number => {
+    if (state.monthlyBudget != null && state.monthlyBudget > 0) return state.monthlyBudget;
     return state.budgets.reduce((s, b) => s + b.limit, 0);
   }, [state.monthlyBudget, state.budgets]);
 
-  const remaining = effectiveBudget > 0 ? effectiveBudget - thisMonthSpent : 0;
-  const usedPct = effectiveBudget > 0 ? Math.min((thisMonthSpent / effectiveBudget) * 100, 100) : 0;
-
-  const snap: FinanceSnapshot = useMemo(() => ({
-    transactions: state.transactions,
-    budgets: state.budgets,
-    goals: state.goals,
-    recurring: state.recurring,
-    accounts: state.accounts,
-    thisMonthSpent,
-    thisMonthIncome,
-    totalBalance,
-    effectiveBudget,
+  const snap: FinSnap = useMemo(() => ({
+    transactions: state.transactions, budgets: state.budgets, goals: state.goals,
+    recurring: state.recurring, accounts: state.accounts,
+    thisMonthSpent, thisMonthIncome, totalBalance, effectiveBudget,
     userName: user?.name?.split(' ')[0] ?? 'there',
   }), [state, thisMonthSpent, thisMonthIncome, totalBalance, effectiveBudget, user]);
 
-  const initMessage = useMemo<Message>(() => ({
-    id: 'init',
-    sender: 'ai',
-    blocks: [
-      { type: 'text', content: `👋 **Hello! I'm SmartSpend AI — your personal finance coach.**\n\nI have real-time access to all your financial data:` },
-      { type: 'stat', label: 'Monthly Budget', value: effectiveBudget > 0 ? formatCurrency(effectiveBudget) : 'Not set', sub: effectiveBudget > 0 ? `${usedPct.toFixed(0)}% used` : 'Set one in Budget tab' },
-      { type: 'stat', label: 'Spent This Month', value: formatCurrency(thisMonthSpent), color: usedPct > 90 ? 'text-red-400' : 'text-white' },
-      { type: 'stat', label: 'Total Balance', value: formatCurrency(totalBalance), color: totalBalance >= 0 ? 'text-emerald-400' : 'text-red-400' },
-      { type: 'text', content: 'Ask me anything — spending analysis, budget tips, category breakdowns, or savings goals!' },
-    ],
-    time: 'Just now',
-    chips: INIT_CHIPS,
-  }), []); // intentionally not reactive — only on mount
-
-  const chatStorageKey = `smart-spend-chat-${user?.id ?? 'guest'}`;
-  const [messages, setMessages] = useLocalStorage<Message[]>(chatStorageKey, [initMessage]);
+  const chatKey = `ss-v4-${user?.id ?? 'guest'}`;
+  const [messages, setMessages] = useLocalStorage<Message[]>(chatKey, []);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [latestAiId, setLatestAiId] = useState<string | null>('init');
-  const [activePromptGroup, setActivePromptGroup] = useState(0);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const userName = user?.name ? user.name.split(' ')[0] : 'there';
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isTyping]);
 
-  const handleSend = useCallback((customText?: string) => {
-    const query = (customText ?? input).trim();
+  const toggleVoice = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { alert('Speech recognition not supported.'); return; }
+    if (isListening) { recognitionRef.current?.stop(); setIsListening(false); return; }
+    try {
+      const r = new SR(); r.lang = 'en-US'; r.continuous = false; r.interimResults = false;
+      r.onstart = () => setIsListening(true);
+      r.onresult = (e: any) => { const t = e.results[0][0].transcript; if (t) { setInput(t); setTimeout(() => handleSend(t), 200); } setIsListening(false); };
+      r.onerror = r.onend = () => setIsListening(false);
+      recognitionRef.current = r; r.start();
+    } catch { setIsListening(false); }
+  };
+
+  const handleSend = useCallback((override?: string) => {
+    const query = (override ?? input).trim();
     if (!query || isTyping) return;
+    if (isListening) { recognitionRef.current?.stop(); setIsListening(false); }
 
-    const userMsg: Message = {
-      id: `u-${Date.now()}`,
-      sender: 'user',
+    setMessages(prev => [...prev, {
+      id: `u-${Date.now()}`, sender: 'user',
       blocks: [{ type: 'text', content: query }],
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setIsTyping(true);
-
-    const delay = 600 + Math.random() * 400;
-    setTimeout(async () => {
-      let blocks: ContentBlock[];
-      let chips: string[];
-      try {
-        const answer = await requestGeminiReply(query, snap);
-        blocks = [{ type: 'text', content: answer }];
-        chips = [];
-      } catch {
-        const fallback = buildReply(query, snap);
-        blocks = fallback.blocks;
-        chips = fallback.chips;
-      }
-      const aiMsg: Message = {
-        id: `ai-${Date.now()}`,
-        sender: 'ai',
-        blocks,
-        chips,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages(prev => [...prev, aiMsg]);
-      setLatestAiId(aiMsg.id);
-      setIsTyping(false);
-    }, delay);
-  }, [input, isTyping, snap]);
-
-  const handleClear = useCallback(() => {
-    setMessages([{
-      ...initMessage,
-      id: `init-${Date.now()}`,
-      time: 'Just now',
-      blocks: [
-        { type: 'text', content: '🧹 Chat cleared! What would you like to explore?' },
-        { type: 'stat', label: 'Spent This Month', value: formatCurrency(thisMonthSpent), color: usedPct > 90 ? 'text-red-400' : 'text-white' },
-        { type: 'stat', label: 'Budget Remaining', value: effectiveBudget > 0 ? formatCurrency(remaining) : '—', color: 'text-emerald-400' },
-      ],
-      chips: INIT_CHIPS,
     }]);
-    setLatestAiId(null);
-  }, [thisMonthSpent, effectiveBudget, remaining, usedPct]);
+    setInput(''); setIsTyping(true);
+
+    setTimeout(async () => {
+      let blocks: ContentBlock[]; let chips: string[] = [];
+      try { blocks = [{ type: 'text', content: await geminiReply(query, snap) }]; chips = ['How much spent?', 'Budget status', 'Save tips']; }
+      catch { ({ blocks, chips } = buildReply(query, snap)); }
+      setMessages(prev => [...prev, { id: `ai-${Date.now()}`, sender: 'ai', blocks, chips, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+      setIsTyping(false);
+    }, 400);
+  }, [input, isTyping, isListening, snap, setMessages]);
+
+  const handleClear = useCallback(() => setMessages([]), [setMessages]);
 
   return (
-    <div className="flex flex-col gap-5 pb-8">
+    /* Full height, two-column layout */
+    <div className="flex gap-5 h-[calc(100vh-6.5rem)] -mx-2 sm:-mx-4">
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-white text-2xl sm:text-3xl font-extrabold tracking-tight">Ask SmartSpend</h1>
-            <span className="text-xl">✨</span>
+      {/* ── LEFT: Live Financial Context Panel ── */}
+      <ContextPanel snap={snap} onQuery={handleSend} />
+
+      {/* ── RIGHT: Chat ── */}
+      <div className="flex-1 min-w-0 flex flex-col">
+
+        {/* Chat header */}
+        <div className="flex items-center justify-between pb-3 mb-1"
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+
+          <div className="flex items-center gap-2.5">
+            <div className="relative">
+              <div className="w-8 h-8 rounded-xl bg-[#0E1F16] border border-emerald-700/50 flex items-center justify-center">
+                <Bot size={15} className="text-emerald-400" strokeWidth={1.75} />
+              </div>
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#111113]"
+                style={{ boxShadow: '0 0 6px rgba(52,211,153,0.8)' }} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-white font-bold text-[14px] tracking-tight">Ask SmartSpend</h1>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 tracking-widest uppercase">Live</span>
+              </div>
+              <p className="text-white/30 text-[10px] mt-0.5">Gemini-powered financial co-pilot</p>
+            </div>
           </div>
-          <p className="text-white/50 text-sm mt-0.5 font-medium">Your 24/7 personal financial coach &amp; money advisor.</p>
-        </div>
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>AI Online</span>
-          </div>
-          <button onClick={handleClear} className="p-2 rounded-2xl bg-[#1C1C1E] border border-white/10 hover:border-white/20 text-white/50 hover:text-white transition-colors" title="Clear chat">
-            <RotateCcw size={15} />
-          </button>
-        </div>
-      </div>
 
-      {/* Live context bar */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-        className="p-3.5 sm:p-4 rounded-3xl bg-[#1C1C1E] border border-white/10 flex flex-wrap items-center gap-3 text-xs shadow-md"
-      >
-        <div className="flex items-center gap-2 text-white/60">
-          <ShieldCheck size={15} className="text-emerald-400 flex-shrink-0" />
-          <span className="font-semibold text-white">Live Data Connected</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-4 text-white/70 font-mono ml-auto">
-          <div><span className="text-white/40">Budget: </span><span className="font-bold text-white">{effectiveBudget > 0 ? formatCurrency(effectiveBudget) : '—'}</span></div>
-          <div><span className="text-white/40">Spent: </span><span className="font-bold text-white">{formatCurrency(thisMonthSpent)}</span>{effectiveBudget > 0 && <span className="text-emerald-400 ml-1">({usedPct.toFixed(0)}%)</span>}</div>
-          <div><span className="text-white/40">Left: </span><span className="font-bold text-emerald-400">{effectiveBudget > 0 ? formatCurrency(remaining) : '—'}</span></div>
-          <div><span className="text-white/40">Balance: </span><span className="font-bold text-white">{formatCurrency(totalBalance)}</span></div>
-        </div>
-      </motion.div>
-
-      {/* Chat container */}
-      <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
-        className="rounded-3xl bg-[#1C1C1E] border border-white/10 flex flex-col shadow-2xl overflow-hidden"
-      >
-        {/* Messages */}
-        <div className="flex-1 p-4 sm:p-6 space-y-5 overflow-y-auto max-h-[540px] custom-scrollbar">
-          {messages.map(msg =>
-            msg.sender === 'ai'
-              ? <AIBubble key={msg.id} msg={msg} isLatest={msg.id === latestAiId} />
-              : <UserBubble key={msg.id} msg={msg} />
+          {messages.length > 0 && (
+            <button onClick={handleClear}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-white/35 hover:text-white/65 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] transition-all active:scale-95">
+              <RotateCcw size={11} />
+              New chat
+            </button>
           )}
+        </div>
 
-          {/* Typing indicator */}
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto space-y-4 py-3 pr-1 custom-scrollbar">
+          {messages.length === 0 ? (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: 0.05 }}
+              className="h-full flex flex-col items-center justify-center text-center px-4">
+              <div className="w-12 h-12 rounded-2xl bg-[#0E1F16] border border-emerald-700/50 flex items-center justify-center mb-4">
+                <Sparkles size={22} className="text-emerald-400" strokeWidth={1.5} />
+              </div>
+              <h2 className="text-white font-bold text-lg tracking-tight mb-1">Hi {userName} 👋</h2>
+              <p className="text-white/35 text-[12px] max-w-[220px] leading-relaxed">
+                Ask anything — pick a quick action from the panel or type below.
+              </p>
+            </motion.div>
+          ) : (
+            <>
+              {messages.map(m => m.sender === 'ai' ? <AIBubble key={m.id} msg={m} onSend={handleSend} /> : <UserBubble key={m.id} msg={m} />)}
+              <AnimatePresence>{isTyping && <TypingDots />}</AnimatePresence>
+              <div ref={endRef} />
+            </>
+          )}
+        </div>
+
+        {/* Input */}
+        <div className="pt-3">
           <AnimatePresence>
-            {isTyping && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-black flex items-center justify-center flex-shrink-0">
-                  <Bot size={16} />
-                </div>
-                <div className="flex items-center gap-1.5 bg-white/5 px-4 py-3 rounded-2xl border border-white/10">
-                  {[0, 150, 300].map(d => (
-                    <span key={d} className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
-                  ))}
-                </div>
+            {isListening && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                className="mb-2 px-3 py-1.5 rounded-lg flex items-center justify-between text-[11px] bg-rose-500/10 border border-rose-500/20 text-rose-300">
+                <div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" /><span>Listening…</span></div>
+                <button onClick={toggleVoice} className="underline font-medium">Stop</button>
               </motion.div>
             )}
           </AnimatePresence>
 
-          <div ref={chatEndRef} />
-        </div>
-
-        {/* Suggested prompts */}
-        <div className="p-4 sm:p-5 bg-white/[0.02] border-t border-white/10 space-y-3">
-          {/* Group tabs */}
-          <div className="flex items-center gap-2">
-            <Sparkles size={12} className="text-emerald-400" />
-            <span className="text-white/40 text-[11px] font-semibold uppercase tracking-wider">Suggested</span>
-            <div className="flex gap-1.5 ml-auto">
-              {PROMPT_GROUPS.map((g, i) => {
-                const Icon = g.icon;
-                return (
-                  <button key={g.label} onClick={() => setActivePromptGroup(i)}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
-                      activePromptGroup === i
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        : 'text-white/30 hover:text-white/60'
-                    }`}
-                  >
-                    <Icon size={11} />
-                    {g.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-            {PROMPT_GROUPS[activePromptGroup].prompts.map(p => (
-              <button key={p} onClick={() => handleSend(p)}
-                className="text-left p-2.5 rounded-xl bg-white/5 hover:bg-emerald-500/10 border border-white/5 hover:border-emerald-500/25 text-white/60 hover:text-emerald-300 text-xs font-medium transition-all leading-snug"
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Input bar */}
-        <div className="p-4 sm:p-5 bg-[#1C1C1E] border-t border-white/10">
-          <div className="flex items-center gap-2">
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
+          <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#13151A] border border-white/[0.08] focus-within:border-emerald-600/40 transition-colors shadow-lg">
+            <input ref={inputRef} type="text" value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
-              placeholder="Ask anything… e.g. How much did I spend on food this month?"
-              className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-emerald-500/50 focus:bg-white/7 transition-all"
-            />
-            <button
+              placeholder="Ask about your spending, budgets, or savings…"
+              className="flex-1 bg-transparent text-white/90 text-[13px] placeholder:text-white/20 focus:outline-none" />
+
+            <button onClick={toggleVoice}
+              className={`p-1.5 rounded-lg transition-all ${isListening ? 'text-white bg-rose-500' : 'text-white/25 hover:text-white/55'}`}>
+              {isListening ? <MicOff size={14} strokeWidth={1.75} /> : <Mic size={14} strokeWidth={1.75} />}
+            </button>
+
+            <motion.button whileTap={{ scale: 0.9 }}
               onClick={() => handleSend()}
               disabled={!input.trim() || isTyping}
-              className="px-5 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 disabled:opacity-30 disabled:pointer-events-none text-black font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20 flex-shrink-0"
-            >
-              <span className="hidden sm:inline">Ask</span>
-              <Send size={16} className="stroke-[2.5]" />
-            </button>
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-black disabled:opacity-20 disabled:pointer-events-none cursor-pointer"
+              style={{ background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 2px 10px rgba(16,185,129,0.3)' }}>
+              <ArrowUp size={13} strokeWidth={2.5} />
+            </motion.button>
           </div>
-          <p className="text-white/20 text-[10px] text-center mt-2">AI responses are based on your logged data only. Not financial advice.</p>
+
+          <p className="text-center text-white/15 text-[10px] mt-1.5 tracking-wide">
+            Based on your verified ledger · Not financial advice
+          </p>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

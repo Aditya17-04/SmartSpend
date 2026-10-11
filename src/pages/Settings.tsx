@@ -19,7 +19,9 @@ import {
   AlertCircle,
   FileDown,
   Receipt,
-  ChevronRight
+  ChevronRight,
+  RefreshCw,
+  Cloud
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -47,7 +49,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
 
 export function Settings({ onNavigate }: { onNavigate?: (page: string) => void } = {}) {
   const { user, logout } = useAuth();
-  const { state, resetData, importTransactions, totalBalance } = useFinance();
+  const { state, resetData, importTransactions, totalBalance, syncData } = useFinance();
 
   const [notifs, setNotifs] = useState({
     budgetAlerts:   true,
@@ -61,6 +63,7 @@ export function Settings({ onNavigate }: { onNavigate?: (page: string) => void }
   const [parentEmail, setParentEmail] = useState('');
   const [parentAccess, setParentAccess] = useState<{ id: string; parent_email: string; status: string } | null>(null);
   const [sharingMessage, setSharingMessage] = useState('');
+  const [isSyncingWithParent, setIsSyncingWithParent] = useState(false);
 
   // File import state
   const excelInputRef = useRef<HTMLInputElement>(null);
@@ -84,18 +87,45 @@ export function Settings({ onNavigate }: { onNavigate?: (page: string) => void }
   const handleParentAccess = async () => {
     if (!supabase || !user || !parentEmail.trim()) return;
     setSharingMessage('');
-    const { data, error } = await supabase.from('parent_access').upsert({
-      child_id: user.id,
-      parent_email: parentEmail.trim().toLowerCase(),
-      status: 'pending',
-      parent_id: null,
-    }, { onConflict: 'child_id,parent_email' }).select('id, parent_email, status').single();
-    if (error) {
-      setSharingMessage(error.message);
-      return;
+    setIsSyncingWithParent(true);
+    try {
+      // 1. First ensure current child financial data is synced to cloud
+      const syncRes = await syncData();
+      if (!syncRes.success) {
+        console.warn('Initial cloud snapshot sync warning:', syncRes.error);
+      }
+
+      // 2. Insert or update parent access invitation
+      const { data, error } = await supabase.from('parent_access').upsert({
+        child_id: user.id,
+        parent_email: parentEmail.trim().toLowerCase(),
+        status: 'pending',
+        parent_id: null,
+      }, { onConflict: 'child_id,parent_email' }).select('id, parent_email, status').single();
+      if (error) {
+        setSharingMessage(error.message);
+        return;
+      }
+      setParentAccess(data);
+      setSharingMessage('Consent request sent and your financial records were synced! Your parent can now view them.');
+    } finally {
+      setIsSyncingWithParent(false);
     }
-    setParentAccess(data);
-    setSharingMessage('Consent request sent. Your parent can approve it after signing in.');
+  };
+
+  const handleManualSyncToParent = async () => {
+    setIsSyncingWithParent(true);
+    setSharingMessage('');
+    try {
+      const res = await syncData();
+      if (res.success) {
+        setSharingMessage(`✓ Successfully synced ${state.transactions.length} transactions and ${state.budgets.length} budgets to cloud!`);
+      } else {
+        setSharingMessage(`Sync failed: ${res.error}`);
+      }
+    } finally {
+      setIsSyncingWithParent(false);
+    }
   };
 
   const handleRevokeParentAccess = async () => {
@@ -109,8 +139,30 @@ export function Settings({ onNavigate }: { onNavigate?: (page: string) => void }
     setSharingMessage('Parent access revoked.');
   };
 
-  const handleSaveName = () => {
+  const handleSaveName = async () => {
     setEditName(false);
+    const trimmed = nameVal.trim();
+    if (!trimmed) return;
+    if (user) {
+      localStorage.setItem(`smart-spend-user-name-${user.id}`, trimmed);
+      if (supabase) {
+        try {
+          await supabase.auth.updateUser({ data: { name: trimmed } });
+          await supabase.from('finance_snapshots').upsert({
+            user_id: user.id,
+            data: { ...state, _name: trimmed },
+            updated_at: new Date().toISOString(),
+          });
+          if (parentAccess?.id) {
+            await supabase.from('parent_access').update({
+              child_name: trimmed,
+            }).eq('id', parentAccess.id);
+          }
+        } catch (e) {
+          console.warn('Could not update profile name in Supabase:', e);
+        }
+      }
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -464,13 +516,41 @@ export function Settings({ onNavigate }: { onNavigate?: (page: string) => void }
             className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-emerald-500/60 disabled:opacity-60"
           />
           {parentAccess?.status === 'approved' ? (
-            <button onClick={handleRevokeParentAccess} className="px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-sm font-semibold hover:bg-red-500/25">Revoke access</button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleManualSyncToParent}
+                disabled={isSyncingWithParent}
+                className="px-4 py-2.5 rounded-xl bg-emerald-500 text-black text-sm font-bold hover:bg-emerald-400 flex items-center gap-2 disabled:opacity-50 transition-colors"
+              >
+                {isSyncingWithParent ? <RefreshCw className="animate-spin" size={14} /> : <Cloud size={14} />}
+                <span>{isSyncingWithParent ? 'Syncing…' : 'Sync to Parent'}</span>
+              </button>
+              <button onClick={handleRevokeParentAccess} className="px-3.5 py-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-sm font-semibold hover:bg-red-500/25">Revoke</button>
+            </div>
           ) : (
-            <button onClick={handleParentAccess} disabled={!parentEmail.trim()} className="px-4 py-2.5 rounded-xl bg-emerald-500 text-black text-sm font-bold disabled:opacity-40">Send consent</button>
+            <button
+              onClick={handleParentAccess}
+              disabled={!parentEmail.trim() || isSyncingWithParent}
+              className="px-4 py-2.5 rounded-xl bg-emerald-500 text-black text-sm font-bold disabled:opacity-40 flex items-center gap-2 hover:bg-emerald-400 transition-colors"
+            >
+              {isSyncingWithParent && <RefreshCw className="animate-spin" size={14} />}
+              <span>{isSyncingWithParent ? 'Syncing…' : 'Send consent'}</span>
+            </button>
           )}
         </div>
-        {parentAccess && <p className="text-xs text-white/50">Status: <span className="text-emerald-300 capitalize">{parentAccess.status}</span></p>}
-        {sharingMessage && <p className="text-xs text-emerald-300">{sharingMessage}</p>}
+        {parentAccess && (
+          <div className="flex items-center justify-between text-xs text-white/50 pt-1">
+            <p>Status: <span className="text-emerald-300 capitalize font-medium">{parentAccess.status}</span></p>
+            {parentAccess.status === 'approved' && (
+              <span className="text-white/40">Shared: {state.transactions.length} records, {state.budgets.length} budgets</span>
+            )}
+          </div>
+        )}
+        {sharingMessage && (
+          <p className={`text-xs ${sharingMessage.toLowerCase().includes('error') || sharingMessage.toLowerCase().includes('failed') ? 'text-red-400' : 'text-emerald-300'}`}>
+            {sharingMessage}
+          </p>
+        )}
       </motion.div>
 
       {/* ── 📥 1. IMPORT DATA SECTION ── */}
@@ -559,84 +639,6 @@ export function Settings({ onNavigate }: { onNavigate?: (page: string) => void }
         )}
       </motion.div>
 
-      {/* ── 📊 ACTIVE FINANCIAL LEDGER SUMMARY ── */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
-        className="rounded-3xl bg-[#1C1C1E] border border-white/10 p-5 sm:p-6 space-y-4 shadow-xl">
-        <div className="flex items-center justify-between border-b border-white/10 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center text-violet-400">
-              <Receipt size={16} />
-            </div>
-            <div>
-              <h3 className="text-white font-bold text-base">Recorded Transactions</h3>
-              <p className="text-white/40 text-xs">{state.transactions.length} total records stored in your ledger</p>
-            </div>
-          </div>
-
-          {onNavigate && (
-            <button
-              onClick={() => onNavigate('expenses')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white text-xs font-medium transition-colors"
-            >
-              <span>Open Expenses Ledger</span>
-              <ChevronRight size={13} />
-            </button>
-          )}
-        </div>
-
-        {state.transactions.length === 0 ? (
-          <div className="py-8 text-center text-white/40 text-xs">
-            <p className="text-2xl mb-1">📭</p>
-            <p>No transactions imported or recorded yet.</p>
-            <p className="text-white/25 mt-0.5">Use the import options above or download the sample template to get started.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-white/[0.02] border border-white/5 text-center text-xs">
-              <div>
-                <p className="text-white/40 text-[10px]">Total Records</p>
-                <p className="text-white font-bold text-sm mt-0.5">{state.transactions.length}</p>
-              </div>
-              <div>
-                <p className="text-white/40 text-[10px]">Total Inflow</p>
-                <p className="text-emerald-400 font-bold text-sm mt-0.5 font-mono">
-                  +{formatCurrency(state.transactions.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0))}
-                </p>
-              </div>
-              <div>
-                <p className="text-white/40 text-[10px]">Total Outflow</p>
-                <p className="text-pink-400 font-bold text-sm mt-0.5 font-mono">
-                  -{formatCurrency(state.transactions.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0))}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wider px-1">Latest 5 Records</p>
-              {state.transactions.slice(0, 5).map(txn => {
-                const icon = CATEGORY_ICONS[txn.category] ?? '📦';
-                const isCr = txn.type === 'credit';
-                return (
-                  <div key={txn.id} className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-colors text-xs">
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <span className="text-base">{icon}</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-white font-medium truncate">{txn.title}</p>
-                        <p className="text-white/35 text-[10px]">
-                          {new Date(txn.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} · {txn.category}
-                        </p>
-                      </div>
-                    </div>
-                    <span className={`font-mono font-bold text-sm ${isCr ? 'text-emerald-400' : 'text-pink-400'}`}>
-                      {isCr ? '+' : '-'}{formatCurrency(txn.amount)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </motion.div>
 
       {/* ── 2. PREVIEW IMPORT MODAL ── */}
       <AnimatePresence>

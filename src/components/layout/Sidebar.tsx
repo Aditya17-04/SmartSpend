@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Receipt, Wallet, Sparkles, Bot, UserCircle, Menu, X, ChevronRight, LogOut, Users,
@@ -6,7 +6,6 @@ import {
 import { cn } from '../../lib/utils';
 import { useFinance } from '../../context/FinanceContext';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../lib/supabase';
 
 export type PageId = 'dashboard' | 'expenses' | 'budget' | 'insights' | 'ask' | 'profile' | 'parentDashboard';
 
@@ -35,22 +34,8 @@ interface SidebarProps {
 export function Sidebar({ activePage, onNavigate }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const { user } = useAuth();
-  const [hasParentAccess, setHasParentAccess] = useState(false);
 
-  useEffect(() => {
-    const client = supabase;
-    if (!client || !user?.email) {
-      setHasParentAccess(false);
-      return;
-    }
-    client.from('parent_access').select('id')
-      .or(`parent_id.eq.${user.id},parent_email.eq.${user.email.toLowerCase()}`)
-      .in('status', ['pending', 'approved'])
-      .limit(1)
-      .then(({ data }) => setHasParentAccess(Boolean(data?.length)));
-  }, [user]);
-
-  const visibleNavItems = hasParentAccess ? navItems : navItems.filter(item => item.id !== 'parentDashboard');
+  const visibleNavItems = navItems;
 
   return (
     <>

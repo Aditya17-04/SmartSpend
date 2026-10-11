@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield,
@@ -22,6 +22,11 @@ import {
   CircleDot,
   Flame,
   Leaf,
+  Users,
+  RefreshCw,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { formatCurrency, CATEGORY_COLORS, CATEGORY_ICONS, getCategoryColor } from "../lib/utils";
 import { useFinance } from "../context/FinanceContext";
@@ -594,6 +599,11 @@ export function ParentDashboard() {
   const [pendingInvite, setPendingInvite] = useState<{ id: string } | null>(null);
   const [accessMessage, setAccessMessage] = useState('');
   const [isParentAccount, setIsParentAccount] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [childId, setChildId] = useState<string | null>(null);
+  const [customChildName, setCustomChildName] = useState<string>('');
+  const [isEditingChildName, setIsEditingChildName] = useState(false);
+  const [tempChildName, setTempChildName] = useState('');
 
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
@@ -601,11 +611,19 @@ export function ParentDashboard() {
   const [monthOpen, setMonthOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
-  useEffect(() => {
+  const loadSharedChild = useCallback(async () => {
     const client = supabase;
     if (!client || !user?.email) return;
-    const loadSharedChild = async () => {
-      const { data: pending, error: pendingError } = await client.from('parent_access').select('id').eq('parent_email', user.email!.toLowerCase()).eq('status', 'pending').maybeSingle();
+    setIsLoading(true);
+    setAccessMessage('');
+    try {
+      // 1. Check for pending invite addressed to this email
+      const { data: pending, error: pendingError } = await client
+        .from('parent_access')
+        .select('id')
+        .eq('parent_email', user.email.toLowerCase())
+        .eq('status', 'pending')
+        .maybeSingle();
       if (pendingError) {
         setAccessMessage(`Unable to check consent: ${pendingError.message}`);
         return;
@@ -614,47 +632,117 @@ export function ParentDashboard() {
         setPendingInvite(pending);
         setIsParentAccount(true);
       }
-      const { data: approved, error: approvedError } = await client.from('parent_access').select('child_id').eq('parent_id', user.id).eq('status', 'approved').maybeSingle();
+
+      // 2. Check for an already-approved access record (match by parent_id OR by email)
+      const { data: approved, error: approvedError } = await client
+        .from('parent_access')
+        .select('id, child_id, parent_id, parent_email, status')
+        .or(`parent_id.eq.${user.id},parent_email.eq."${user.email.toLowerCase()}"`)
+        .eq('status', 'approved')
+        .maybeSingle();
       if (approvedError) {
         setAccessMessage(`Unable to load parent access: ${approvedError.message}`);
         return;
       }
       if (!approved) return;
+
       setIsParentAccount(true);
-      const { data: snapshot, error: snapshotError } = await client.from('finance_snapshots').select('data').eq('user_id', approved.child_id).single();
-      if (snapshotError) {
-        setAccessMessage(`Access is approved, but the child data is not synced yet: ${snapshotError.message}`);
+
+      // Auto-link parent_id if currently null or mismatched
+      if (approved.parent_id !== user.id) {
+        console.log('Auto-linking parent_id to current user...', user.id);
+        const { error: linkErr } = await client
+          .from('parent_access')
+          .update({ parent_id: user.id, approved_at: new Date().toISOString() })
+          .eq('id', approved.id);
+        if (linkErr) {
+          console.warn('Could not auto-link parent_id:', linkErr.message);
+        }
+      }
+
+      // 3. Fetch the child's finance snapshot
+      setChildId(approved.child_id);
+      const savedCustomName = localStorage.getItem(`smart-spend-child-name-${approved.child_id}`) || '';
+      if (savedCustomName) {
+        setCustomChildName(savedCustomName);
+      }
+
+      const { data: snapshot, error: snapshotError } = await client
+        .from('finance_snapshots')
+        .select('data')
+        .eq('user_id', approved.child_id)
+        .maybeSingle();
+
+      let child = snapshot?.data as { transactions?: Transaction[]; budgets?: Budget[]; _name?: string; name?: string } | undefined;
+
+      // 4. Fallback: Local storage cache (for same-browser testing or offline cache)
+      if (!child || (!child.transactions?.length && !child.budgets?.length)) {
+        try {
+          const localChildRaw = localStorage.getItem(`smart-spend-finance-${approved.child_id}`);
+          if (localChildRaw) {
+            const parsed = JSON.parse(localChildRaw);
+            if (parsed.transactions?.length || parsed.budgets?.length) {
+              child = {
+                ...parsed,
+                _name: child?._name ?? parsed._name ?? parsed.name,
+              };
+              console.log('Loaded child data from local storage cache');
+            }
+          }
+        } catch (e) {
+          console.warn('Could not read local child storage fallback:', e);
+        }
+      }
+
+      // Check for name from various sources
+      const localChildProfileName = localStorage.getItem(`smart-spend-user-name-${approved.child_id}`) || '';
+      const inferredName = savedCustomName || child?._name || child?.name || localChildProfileName || (approved as any).child_name || '';
+
+      if (inferredName && inferredName !== 'Your Child') {
+        setCustomChildName(inferredName);
+      }
+
+      if (snapshotError && !child) {
+        console.error('Child snapshot query error:', snapshotError);
+        setAccessMessage(`Access is approved, but child data could not be fetched (${snapshotError.message}). Check database permissions or tap Refresh.`);
         return;
       }
-      const child = snapshot?.data as { transactions?: Transaction[]; budgets?: Budget[] } | undefined;
-      if (child) setSharedChild({ name: 'Your Child', transactions: child.transactions ?? [], budgets: child.budgets ?? [] });
-    };
-    void loadSharedChild();
+
+      if (child && ((child.transactions && child.transactions.length > 0) || (child.budgets && child.budgets.length > 0))) {
+        setSharedChild({
+          name: inferredName || child._name || child.name || 'Your Child',
+          transactions: child.transactions ?? [],
+          budgets: child.budgets ?? [],
+        });
+        setAccessMessage('');
+      } else {
+        setAccessMessage('Access is approved! However, your child has not synced any transactions yet. Ask them to open Settings and tap "Sync to Parent".');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   }, [user]);
+
+  useEffect(() => {
+    void loadSharedChild();
+  }, [loadSharedChild]);
 
   const approveInvite = async () => {
     const client = supabase;
     if (!client || !pendingInvite || !user) return;
-    const { error } = await client.from('parent_access').update({ parent_id: user.id, status: 'approved', approved_at: new Date().toISOString() }).eq('id', pendingInvite.id);
+    setIsLoading(true);
+    const { error } = await client
+      .from('parent_access')
+      .update({ parent_id: user.id, status: 'approved', approved_at: new Date().toISOString() })
+      .eq('id', pendingInvite.id);
     if (error) {
       setAccessMessage(error.message);
+      setIsLoading(false);
       return;
     }
-
-    const { data: access } = await client.from('parent_access').select('child_id').eq('id', pendingInvite.id).single();
-    if (access) {
-      const { data: snapshot, error: snapshotError } = await client.from('finance_snapshots').select('data').eq('user_id', access.child_id).single();
-      const child = snapshot?.data as { transactions?: Transaction[]; budgets?: Budget[] } | undefined;
-      if (snapshotError || !child) {
-        setAccessMessage('Access approved, but the child has not synced finance data yet.');
-      } else {
-        setSharedChild({ name: 'Your Child', transactions: child.transactions ?? [], budgets: child.budgets ?? [] });
-        setAccessMessage('Access approved. The shared child data is now visible.');
-      }
-    } else {
-      setAccessMessage('Access was approved, but the sharing record could not be loaded.');
-    }
     setPendingInvite(null);
+    // Re-run the full load to pick up child data now that parent_id is set
+    await loadSharedChild();
   };
 
   const sourceTransactions = sharedChild?.transactions ?? (isParentAccount ? [] : state.transactions);
@@ -703,7 +791,50 @@ export function ParentDashboard() {
   const totalIncome = useMemo(() => monthTransactions.filter(t => t.type === "credit").reduce((s, t) => s + t.amount, 0), [monthTransactions]);
   const totalBudget = visibleBudgets.reduce((s, b) => s + b.limit, 0);
 
-  const childName = sharedChild?.name ?? user?.name ?? "Your Child";
+  const childName = customChildName || (sharedChild?.name && sharedChild.name !== 'Your Child' ? sharedChild.name : 'Your Child');
+
+  const handleSaveChildName = () => {
+    const trimmed = tempChildName.trim();
+    if (!trimmed) {
+      setIsEditingChildName(false);
+      return;
+    }
+    setCustomChildName(trimmed);
+    if (childId) {
+      localStorage.setItem(`smart-spend-child-name-${childId}`, trimmed);
+    }
+    setSharedChild(prev => prev ? { ...prev, name: trimmed } : prev);
+    setIsEditingChildName(false);
+  };
+
+  // Show a "no access yet" screen if loading is done and there's no data/invite
+  if (!isLoading && !sharedChild && !pendingInvite && isParentAccount === false) {
+    return (
+      <div className="min-h-screen text-white font-sans flex flex-col items-center justify-center gap-6 pb-8 px-4">
+        <div className="w-16 h-16 rounded-2xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center">
+          <Users size={28} className="text-violet-400" />
+        </div>
+        <div className="text-center max-w-sm">
+          <h1 className="text-white font-bold text-xl mb-2">No Parent Access Yet</h1>
+          <p className="text-white/50 text-sm leading-relaxed">
+            This is a <strong className="text-white/70">view-only dashboard</strong> for parents.<br /><br />
+            To get started, ask your child to open <strong className="text-white/70">Settings → Parent Access</strong> and enter your email address. Once they send consent, you'll see an approval prompt here.
+          </p>
+        </div>
+        <div className="flex items-start gap-3 p-4 rounded-2xl border border-white/8 bg-white/2 max-w-sm w-full">
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Shield size={14} className="text-emerald-400" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-white/70 text-sm font-semibold">Child-controlled sharing</p>
+            <p className="text-white/35 text-xs leading-relaxed">
+              Only the child can initiate sharing. Parents get a read-only view and can never edit or delete transactions.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen text-white font-sans pb-8">
@@ -713,26 +844,74 @@ export function ParentDashboard() {
         <div className="py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-black text-base">
-                {(user?.avatar ?? "U")}
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-black text-base shadow-md">
+                {childName !== 'Your Child' ? childName.charAt(0).toUpperCase() : (user?.avatar ?? "U")}
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-[#111113]" />
             </div>
             <div>
               <p className="text-white/40 text-xs font-medium">Parent View</p>
-              <h1 className="text-white font-bold text-base leading-tight">{childName}&apos;s Spending</h1>
+              {isEditingChildName ? (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <input
+                    value={tempChildName}
+                    onChange={e => setTempChildName(e.target.value)}
+                    placeholder="Enter child's name"
+                    autoFocus
+                    className="bg-white/10 border border-white/20 rounded-lg px-2.5 py-1 text-white text-sm font-bold focus:outline-none focus:border-emerald-400"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleSaveChildName();
+                      if (e.key === 'Escape') setIsEditingChildName(false);
+                    }}
+                  />
+                  <button onClick={handleSaveChildName} className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">
+                    <Check size={13} />
+                  </button>
+                  <button onClick={() => setIsEditingChildName(false)} className="p-1.5 rounded-lg bg-white/10 text-white/50 hover:bg-white/20">
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <h1 className="text-white font-bold text-base leading-tight">
+                    {childName}&apos;s Spending
+                  </h1>
+                  <button
+                    onClick={() => {
+                      setTempChildName(childName === 'Your Child' ? '' : childName);
+                      setIsEditingChildName(true);
+                    }}
+                    title="Change child's name"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-white/50 hover:text-white text-[11px] font-medium transition-colors border border-white/10"
+                  >
+                    <Pencil size={10} />
+                    <span>{childName === 'Your Child' ? 'Set name' : 'Edit'}</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Month picker */}
-          <div className="relative">
+          {/* Controls: Refresh & Month picker */}
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setMonthOpen(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/6 border border-white/10 text-white/80 text-sm font-semibold hover:bg-white/10 transition-colors"
+              onClick={() => void loadSharedChild()}
+              disabled={isLoading}
+              title="Refresh Data"
+              className="p-2 rounded-xl bg-white/6 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white transition-colors disabled:opacity-50"
             >
-              {MONTHS[selectedMonth].slice(0, 3)} {selectedYear}
-              <ChevronDown size={13} className={`transition-transform ${monthOpen ? "rotate-180" : ""}`} />
+              <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
             </button>
+
+            {/* Month picker */}
+            <div className="relative">
+              <button
+                onClick={() => setMonthOpen(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/6 border border-white/10 text-white/80 text-sm font-semibold hover:bg-white/10 transition-colors"
+              >
+                {MONTHS[selectedMonth].slice(0, 3)} {selectedYear}
+                <ChevronDown size={13} className={`transition-transform ${monthOpen ? "rotate-180" : ""}`} />
+              </button>
             <AnimatePresence>
               {monthOpen && (
                 <motion.div
@@ -756,6 +935,7 @@ export function ParentDashboard() {
                 </motion.div>
               )}
             </AnimatePresence>
+            </div>
           </div>
         </div>
 
@@ -786,20 +966,52 @@ export function ParentDashboard() {
       {pendingInvite && (
         <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 mb-4">
           <p className="text-amber-200 text-sm">A child has invited this account to view their spending.</p>
-          <button onClick={approveInvite} className="px-3 py-2 rounded-xl bg-amber-400 text-black text-xs font-bold">Approve</button>
+          <button
+            onClick={approveInvite}
+            disabled={isLoading}
+            className="px-3 py-2 rounded-xl bg-amber-400 text-black text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoading ? 'Approving…' : 'Approve'}
+          </button>
         </div>
       )}
-      {accessMessage && <p className="text-emerald-300 text-xs mb-3">{accessMessage}</p>}
-      <motion.div variants={ITEM} initial="hidden" animate="show"
-        className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 mb-4"
-      >
-        <BadgeCheck size={18} className="text-emerald-400 flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-emerald-300 text-sm font-semibold">Access Approved by {childName}</p>
-          <p className="text-emerald-400/60 text-xs">View-only · {childName} can revoke access anytime from Settings</p>
+      {isLoading && !pendingInvite && (
+        <div className="flex items-center gap-2 mb-4 text-white/50 text-sm">
+          <svg className="animate-spin w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+          Loading child data…
         </div>
-        <Shield size={14} className="text-emerald-400/50 flex-shrink-0" />
-      </motion.div>
+      )}
+      {accessMessage && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 mb-4 text-xs text-amber-300">
+          <div className="flex items-center gap-2">
+            <Info size={14} className="flex-shrink-0" />
+            <span>{accessMessage}</span>
+          </div>
+          <button
+            onClick={() => void loadSharedChild()}
+            disabled={isLoading}
+            className="px-3 py-1.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 border border-amber-400/30 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 transition-colors"
+          >
+            <RefreshCw className={isLoading ? "animate-spin" : ""} size={12} />
+            <span>Refresh</span>
+          </button>
+        </div>
+      )}
+      {sharedChild && (
+        <motion.div variants={ITEM} initial="hidden" animate="show"
+          className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 mb-4"
+        >
+          <BadgeCheck size={18} className="text-emerald-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-emerald-300 text-sm font-semibold">Access Approved by {childName}</p>
+            <p className="text-emerald-400/60 text-xs">View-only · {childName} can revoke access anytime from Settings</p>
+          </div>
+          <Shield size={14} className="text-emerald-400/50 flex-shrink-0" />
+        </motion.div>
+      )}
 
       {/* Tab content */}
       <AnimatePresence mode="wait">

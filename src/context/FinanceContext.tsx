@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useReducer, useEffect, useMemo, useState, useCallback, type ReactNode } from 'react';
 import React from 'react';
 import type { Account, Transaction, Budget, SavingsGoal, MonthlyHistory, CategorySpend, Alert, RecurringTransaction, TransactionStatus } from '../types/finance';
 import { mockAccounts, mockTransactions, mockBudgets, mockSavingsGoals, mockMonthlyHistory, mockRecurring, syncedAccounts, syncedTransactions, syncedBudgets, syncedGoals, syncedHistory, syncedRecurring } from '../data/mockData';
@@ -124,7 +124,7 @@ interface FinanceContextValue {
   addRecurring: (r: RecurringTransaction) => void;
   updateRecurring: (r: RecurringTransaction) => void;
   deleteRecurring: (id: string) => void;
-  syncData: () => void;
+  syncData: () => Promise<{ success: boolean; error?: string }>;
   resetData: () => void;
   totalBalance: number;
   totalAssets: number;
@@ -157,10 +157,33 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setLoadedUserId(null);
-    dispatch({ type: 'LOAD_STATE', payload: loadStateForUser(user.id) });
+    const localData = loadStateForUser(user.id);
+    dispatch({ type: 'LOAD_STATE', payload: localData });
     setLoadedUserId(user.id);
-  }, [user?.id]);
+
+    // If connected to Supabase, check cloud snapshot to restore or backup
+    const client = supabase;
+    if (client) {
+      client.from('finance_snapshots').select('data').eq('user_id', user.id).maybeSingle()
+        .then(({ data, error }) => {
+          if (error) {
+            console.warn('Could not read cloud finance snapshot:', error.message);
+            return;
+          }
+          const cloudState = data?.data as FinanceState | undefined;
+          if (cloudState && (cloudState.transactions?.length ?? 0) > (localData.transactions?.length ?? 0)) {
+            console.log('Restored finance state from cloud snapshot');
+            dispatch({ type: 'LOAD_STATE', payload: cloudState });
+          } else if ((localData.transactions?.length ?? 0) > 0) {
+            void client.from('finance_snapshots').upsert({
+              user_id: user.id,
+              data: { ...localData, _name: user.name },
+              updated_at: new Date().toISOString(),
+            });
+          }
+        });
+    }
+  }, [user?.id, user?.name]);
 
   useEffect(() => {
     if (!user || loadedUserId !== user.id) return;
@@ -168,9 +191,38 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(storageKey, JSON.stringify(state));
     localStorage.setItem(`${storageKey}-version`, DATA_VERSION);
     if (supabase) {
-      void supabase.from('finance_snapshots').upsert({ user_id: user.id, data: state, updated_at: new Date().toISOString() });
+      supabase.from('finance_snapshots').upsert({
+        user_id: user.id,
+        data: { ...state, _name: user.name },
+        updated_at: new Date().toISOString(),
+      }).then(({ error }) => {
+        if (error) {
+          console.error('Auto snapshot sync failed:', error.message);
+        } else {
+          console.log('Finance snapshot synced to Supabase successfully');
+        }
+      });
     }
   }, [state, user, loadedUserId]);
+
+  const syncData = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    if (!supabase || !user) return { success: false, error: 'Not connected to Supabase or not logged in' };
+    try {
+      const { error } = await supabase.from('finance_snapshots').upsert({
+        user_id: user.id,
+        data: { ...state, _name: user.name },
+        updated_at: new Date().toISOString(),
+      });
+      if (error) {
+        console.error('Manual snapshot sync failed:', error);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (err: any) {
+      console.error('Snapshot sync exception:', err);
+      return { success: false, error: err?.message || 'Sync failed' };
+    }
+  }, [user, state]);
 
   const hasData = true;
 
@@ -319,7 +371,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       addRecurring: r => dispatch({ type: 'ADD_RECURRING', payload: r }),
       updateRecurring: r => dispatch({ type: 'UPDATE_RECURRING', payload: r }),
       deleteRecurring: id => dispatch({ type: 'DELETE_RECURRING', payload: id }),
-      syncData: () => dispatch({ type: 'SYNC_DATA' }),
+      syncData,
       resetData: () => dispatch({ type: 'RESET' }),
     }}>
       {children}
