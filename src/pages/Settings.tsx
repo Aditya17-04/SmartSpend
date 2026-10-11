@@ -653,7 +653,7 @@ export function Settings({ onNavigate }: { onNavigate?: (page: string) => void }
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
-              className="w-full max-w-2xl bg-[#1C1C1E] border border-white/15 rounded-3xl p-6 shadow-2xl flex flex-col max-h-[85vh] space-y-4"
+              className="w-full max-w-2xl bg-[#1C1C1E] border border-white/15 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col max-h-[90vh] space-y-3 sm:space-y-4"
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <div className="flex items-center gap-2.5">
@@ -661,7 +661,7 @@ export function Settings({ onNavigate }: { onNavigate?: (page: string) => void }
                     ✨
                   </div>
                   <div>
-                    <h3 className="text-white font-bold text-lg">Review Transactions to Import</h3>
+                    <h3 className="text-white font-bold text-base sm:text-lg">Review Transactions</h3>
                     <p className="text-white/40 text-xs">{previewTxns.length} records ready to import</p>
                   </div>
                 </div>
@@ -675,20 +675,20 @@ export function Settings({ onNavigate }: { onNavigate?: (page: string) => void }
               </div>
 
               {/* Summary of parsed list */}
-              <div className="grid grid-cols-3 gap-2.5 p-3 rounded-2xl bg-white/5 border border-white/5 text-center">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 p-2.5 sm:p-3 rounded-2xl bg-white/5 border border-white/5 text-center">
                 <div>
-                  <p className="text-white/40 text-[11px]">Total Found</p>
-                  <p className="text-white font-bold text-base">{previewTxns.length}</p>
+                  <p className="text-white/40 text-[10px] sm:text-[11px]">Total Found</p>
+                  <p className="text-white font-bold text-sm sm:text-base">{previewTxns.length}</p>
                 </div>
                 <div>
-                  <p className="text-white/40 text-[11px]">Income Total</p>
-                  <p className="text-emerald-400 font-bold text-base font-mono">
+                  <p className="text-white/40 text-[10px] sm:text-[11px]">Income Total</p>
+                  <p className="text-emerald-400 font-bold text-xs sm:text-base font-mono truncate px-0.5">
                     +{formatCurrency(previewTxns.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0))}
                   </p>
                 </div>
                 <div>
-                  <p className="text-white/40 text-[11px]">Expense Total</p>
-                  <p className="text-pink-400 font-bold text-base font-mono">
+                  <p className="text-white/40 text-[10px] sm:text-[11px]">Expense Total</p>
+                  <p className="text-pink-400 font-bold text-xs sm:text-base font-mono truncate px-0.5">
                     -{formatCurrency(previewTxns.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0))}
                   </p>
                 </div>

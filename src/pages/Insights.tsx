@@ -257,16 +257,16 @@ export function Insights({ onNavigate }: { onNavigate?: (page: string) => void }
               </p>
 
               {/* Stats: Spent & Remaining */}
-              <div className="flex items-center gap-8 pt-1">
-                <div className="p-3 rounded-2xl bg-white/5 border border-white/5 min-w-[120px]">
+              <div className="grid grid-cols-2 sm:flex sm:items-center gap-3 sm:gap-6 pt-1">
+                <div className="p-3 rounded-2xl bg-white/5 border border-white/5 min-w-0 sm:min-w-[120px]">
                   <p className="text-white/40 text-xs font-medium uppercase tracking-wider">Spent</p>
-                  <p className="text-white font-bold text-lg font-mono mt-0.5">
+                  <p className="text-white font-bold text-base sm:text-lg font-mono mt-0.5 truncate">
                     {formatCurrency(spentAmount)}
                   </p>
                 </div>
-                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 min-w-[120px]">
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 min-w-0 sm:min-w-[120px]">
                   <p className="text-emerald-400/70 text-xs font-medium uppercase tracking-wider">Remaining</p>
-                  <p className="text-emerald-400 font-bold text-lg font-mono mt-0.5">
+                  <p className="text-emerald-400 font-bold text-base sm:text-lg font-mono mt-0.5 truncate">
                     {effectiveMonthlyBudget > 0 ? formatCurrency(remainingAmount) : '—'}
                   </p>
                 </div>

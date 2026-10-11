@@ -37,10 +37,10 @@ function AppContent() {
   const ActivePage = PAGES[activePage];
 
   return (
-    <div className="min-h-screen bg-[#111113] text-white font-sans flex">
+    <div className="min-h-screen bg-[#111113] text-white font-sans flex flex-col lg:flex-row">
       <Sidebar activePage={activePage} onNavigate={setActivePage} />
-      <main className="flex-1 min-w-0 min-h-screen pb-20 lg:pb-0">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-7">
+      <main className="flex-1 min-w-0 min-h-screen pt-14 lg:pt-0 pb-20 lg:pb-0">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-7">
           <ActivePage onNavigate={setActivePage} />
         </div>
       </main>

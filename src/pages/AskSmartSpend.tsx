@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bot, User, Mic, MicOff, ArrowUp, RotateCcw,
   Sparkles, Copy, Check, ThumbsUp, ThumbsDown,
-  TrendingUp, Wallet, Target, BarChart2,
+  TrendingUp, Wallet, Target, BarChart2, X,
 } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { useAuth } from '../context/AuthContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
-import { formatCurrency, CATEGORY_ICONS } from '../lib/utils';
+import { formatCurrency, CATEGORY_ICONS, cn } from '../lib/utils';
 import type { Transaction } from '../types/finance';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -210,21 +210,21 @@ async function geminiReply(query: string, snap: FinSnap): Promise<string> {
 
 // ─── Left Panel — Live Context ─────────────────────────────────────────────────
 
-function ContextPanel({ snap, onQuery }: { snap: FinSnap; onQuery: (q: string) => void }) {
+const QUERIES = [
+  { label: 'Spending recap',   q: 'How much have I spent this month?',   icon: TrendingUp,  color: 'text-violet-400' },
+  { label: 'Budget health',    q: 'Show my budget status',                icon: Wallet,      color: 'text-blue-400'   },
+  { label: 'Top category',     q: 'What is my biggest expense?',          icon: BarChart2,   color: 'text-amber-400'  },
+  { label: 'Save tips',        q: 'Tips to save money this month',        icon: Target,      color: 'text-emerald-400'},
+];
+
+function ContextPanel({ snap, onQuery, isMobile = false }: { snap: FinSnap; onQuery: (q: string) => void; isMobile?: boolean }) {
   const { effectiveBudget: budget, thisMonthSpent: spent, totalBalance, transactions } = snap;
   const usedPct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const remaining = budget > 0 ? budget - spent : 0;
   const cats = catMap(transactions.filter(t => isThisMonth(t.date)));
 
-  const QUERIES = [
-    { label: 'Spending recap',   q: 'How much have I spent this month?',   icon: TrendingUp,  color: 'text-violet-400' },
-    { label: 'Budget health',    q: 'Show my budget status',                icon: Wallet,      color: 'text-blue-400'   },
-    { label: 'Top category',     q: 'What is my biggest expense?',          icon: BarChart2,   color: 'text-amber-400'  },
-    { label: 'Save tips',        q: 'Tips to save money this month',        icon: Target,      color: 'text-emerald-400'},
-  ];
-
   return (
-    <div className="w-64 flex-shrink-0 flex flex-col gap-3 overflow-y-auto pr-1 custom-scrollbar">
+    <div className={cn("flex flex-col gap-3 pr-1", isMobile ? "w-full pb-4" : "w-64 flex-shrink-0 overflow-y-auto custom-scrollbar")}>
 
       {/* Balance Card */}
       <div className="rounded-2xl p-4 relative overflow-hidden"
@@ -429,6 +429,7 @@ export function AskSmartSpend() {
   const [messages, setMessages] = useLocalStorage<Message[]>(chatKey, []);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [showMobileContext, setShowMobileContext] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const userName = user?.name ? user.name.split(' ')[0] : 'there';
@@ -472,11 +473,13 @@ export function AskSmartSpend() {
   const handleClear = useCallback(() => setMessages([]), [setMessages]);
 
   return (
-    /* Full height, two-column layout */
-    <div className="flex gap-5 h-[calc(100vh-6.5rem)] -mx-2 sm:-mx-4">
+    /* Full height, responsive two-column layout */
+    <div className="flex gap-5 h-[calc(100dvh-8.5rem)] lg:h-[calc(100vh-6.5rem)] -mx-1 sm:-mx-4">
 
-      {/* ── LEFT: Live Financial Context Panel ── */}
-      <ContextPanel snap={snap} onQuery={handleSend} />
+      {/* ── LEFT: Live Financial Context Panel (Desktop) ── */}
+      <aside className="hidden lg:flex w-64 flex-shrink-0 flex-col">
+        <ContextPanel snap={snap} onQuery={handleSend} />
+      </aside>
 
       {/* ── RIGHT: Chat ── */}
       <div className="flex-1 min-w-0 flex flex-col">
@@ -502,26 +505,49 @@ export function AskSmartSpend() {
             </div>
           </div>
 
-          {messages.length > 0 && (
-            <button onClick={handleClear}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-white/35 hover:text-white/65 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] transition-all active:scale-95">
-              <RotateCcw size={11} />
-              New chat
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setShowMobileContext(true)}
+              className="lg:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 active:scale-95 transition-all"
+            >
+              <BarChart2 size={12} />
+              <span>Stats</span>
             </button>
-          )}
+            {messages.length > 0 && (
+              <button onClick={handleClear}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-white/35 hover:text-white/65 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] transition-all active:scale-95">
+                <RotateCcw size={11} />
+                <span className="hidden xs:inline">New chat</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile quick suggestions */}
+        <div className="lg:hidden flex items-center gap-1.5 overflow-x-auto py-2 scrollbar-none flex-shrink-0 -mx-1 px-1 border-b border-white/[0.05]">
+          {QUERIES.map(({ label, q, icon: Icon, color }) => (
+            <button
+              key={q}
+              onClick={() => handleSend(q)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] text-[11px] font-medium text-white/70 whitespace-nowrap active:scale-95 transition-all flex-shrink-0"
+            >
+              <Icon size={11} className={color} />
+              <span>{label}</span>
+            </button>
+          ))}
         </div>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto space-y-4 py-3 pr-1 custom-scrollbar">
           {messages.length === 0 ? (
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: 0.05 }}
-              className="h-full flex flex-col items-center justify-center text-center px-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#0E1F16] border border-emerald-700/50 flex items-center justify-center mb-4">
+              className="h-full flex flex-col items-center justify-center text-center px-4 py-8">
+              <div className="w-12 h-12 rounded-2xl bg-[#0E1F16] border border-emerald-700/50 flex items-center justify-center mb-3">
                 <Sparkles size={22} className="text-emerald-400" strokeWidth={1.5} />
               </div>
               <h2 className="text-white font-bold text-lg tracking-tight mb-1">Hi {userName} 👋</h2>
-              <p className="text-white/35 text-[12px] max-w-[220px] leading-relaxed">
-                Ask anything — pick a quick action from the panel or type below.
+              <p className="text-white/35 text-[12px] max-w-[240px] leading-relaxed mb-4">
+                Ask about your expenses, budgets, savings, or tap any suggestion above.
               </p>
             </motion.div>
           ) : (
@@ -534,7 +560,7 @@ export function AskSmartSpend() {
         </div>
 
         {/* Input */}
-        <div className="pt-3">
+        <div className="pt-2 sm:pt-3">
           <AnimatePresence>
             {isListening && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
@@ -545,12 +571,12 @@ export function AskSmartSpend() {
             )}
           </AnimatePresence>
 
-          <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#13151A] border border-white/[0.08] focus-within:border-emerald-600/40 transition-colors shadow-lg">
+          <div className="flex items-center gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl bg-[#13151A] border border-white/[0.08] focus-within:border-emerald-600/40 transition-colors shadow-lg">
             <input ref={inputRef} type="text" value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
-              placeholder="Ask about your spending, budgets, or savings…"
-              className="flex-1 bg-transparent text-white/90 text-[13px] placeholder:text-white/20 focus:outline-none" />
+              placeholder="Ask about spending, budgets, savings…"
+              className="flex-1 bg-transparent text-white/90 text-[13px] sm:text-sm placeholder:text-white/20 focus:outline-none" />
 
             <button onClick={toggleVoice}
               className={`p-1.5 rounded-lg transition-all ${isListening ? 'text-white bg-rose-500' : 'text-white/25 hover:text-white/55'}`}>
@@ -571,6 +597,49 @@ export function AskSmartSpend() {
           </p>
         </div>
       </div>
+
+      {/* ── Mobile Context Bottom Sheet ── */}
+      <AnimatePresence>
+        {showMobileContext && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowMobileContext(false)}
+              className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 lg:hidden"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+              className="fixed bottom-0 left-0 right-0 max-h-[85vh] bg-[#14161A] border-t border-white/10 z-50 p-4 rounded-t-3xl overflow-y-auto lg:hidden shadow-2xl"
+            >
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/8">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">📊</span>
+                  <span className="text-white font-bold text-sm">Financial Context</span>
+                </div>
+                <button
+                  onClick={() => setShowMobileContext(false)}
+                  className="p-1 rounded-lg text-white/40 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <ContextPanel
+                snap={snap}
+                onQuery={(q) => {
+                  setShowMobileContext(false);
+                  handleSend(q);
+                }}
+                isMobile
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

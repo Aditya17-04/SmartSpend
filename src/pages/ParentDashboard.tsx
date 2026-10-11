@@ -840,17 +840,17 @@ export function ParentDashboard() {
     <div className="min-h-screen text-white font-sans pb-8">
 
       {/* Header */}
-      <div className="sticky top-0 z-40 bg-[#111113]/95 backdrop-blur-md border-b border-white/6 -mx-4 sm:-mx-6 px-4 sm:px-6 mb-5">
-        <div className="py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-black text-base shadow-md">
+      <div className="sticky top-14 lg:top-0 z-30 bg-[#111113]/95 backdrop-blur-md border-b border-white/6 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-5">
+        <div className="py-3 sm:py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="relative flex-shrink-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-black text-sm sm:text-base shadow-md">
                 {childName !== 'Your Child' ? childName.charAt(0).toUpperCase() : (user?.avatar ?? "U")}
               </div>
-              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-[#111113]" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-emerald-400 rounded-full border-2 border-[#111113]" />
             </div>
-            <div>
-              <p className="text-white/40 text-xs font-medium">Parent View</p>
+            <div className="min-w-0">
+              <p className="text-white/40 text-[11px] sm:text-xs font-medium">Parent View</p>
               {isEditingChildName ? (
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <input
@@ -858,7 +858,7 @@ export function ParentDashboard() {
                     onChange={e => setTempChildName(e.target.value)}
                     placeholder="Enter child's name"
                     autoFocus
-                    className="bg-white/10 border border-white/20 rounded-lg px-2.5 py-1 text-white text-sm font-bold focus:outline-none focus:border-emerald-400"
+                    className="bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white text-xs sm:text-sm font-bold focus:outline-none focus:border-emerald-400 w-28 sm:w-40"
                     onKeyDown={e => {
                       if (e.key === 'Enter') handleSaveChildName();
                       if (e.key === 'Escape') setIsEditingChildName(false);

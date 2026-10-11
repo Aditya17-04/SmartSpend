@@ -188,59 +188,107 @@ function MobileNav({ activePage, onNavigate, items }: { activePage: PageId; onNa
   const activeItem = items.find(n => n.id === activePage) ?? items[0];
   const Icon = activeItem.icon;
 
+  // Primary 4 tabs for bottom navigation bar + More
+  const primaryTabs: PageId[] = ['dashboard', 'expenses', 'budget', 'ask'];
+  const isMoreActive = !primaryTabs.includes(activePage);
+
   return (
     <>
       {/* Top bar */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-navy-900 border-b border-white/5 px-4 h-14 flex items-center justify-between">
+      <header className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-navy-900/95 backdrop-blur-xl border-b border-white/8 px-4 h-14 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
-            <span className="text-sm">💜</span>
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center shadow-md shadow-violet-500/20">
+            <span className="text-base">💜</span>
           </div>
-          <span className="text-white font-bold">SmartSpend</span>
+          <span className="text-white font-bold text-base tracking-tight">SmartSpend</span>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-white/50 text-sm">
-            <Icon size={14} className="text-violet-400" />
-            <span>{activeItem.label}</span>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-white/70 text-xs font-medium">
+            <Icon size={13} className="text-violet-400" />
+            <span className="max-w-[90px] truncate">{activeItem.label}</span>
           </div>
-          <button onClick={() => setOpen(true)} className="p-1.5 text-white/50 hover:text-white">
+          <button
+            onClick={() => setOpen(true)}
+            aria-label="Open menu"
+            className="p-2 rounded-xl text-white/60 hover:text-white hover:bg-white/5 active:scale-95 transition-all"
+          >
             <Menu size={20} />
           </button>
         </div>
-      </div>
-      <div className="h-14 lg:hidden" />
+      </header>
 
-      {/* Bottom tab bar (mobile) */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-navy-900 border-t border-white/5 px-2 py-1 flex items-center justify-around">
-        {items.map(item => {
-          const isActive = activePage === item.id;
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className={cn(
-                'flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all text-xs font-medium',
-                isActive ? 'text-violet-400' : 'text-white/35 hover:text-white/60'
-              )}
-            >
-              <Icon size={20} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Bottom tab bar (mobile 5-tab bar with Safe Area) */}
+      <nav
+        aria-label="Mobile Navigation"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-navy-900/95 backdrop-blur-2xl border-t border-white/8 px-1 pt-1.5 pb-[max(env(safe-area-inset-bottom),0.35rem)] flex items-center justify-around shadow-2xl"
+      >
+        {items
+          .filter(i => primaryTabs.includes(i.id))
+          .map(item => {
+            const isActive = activePage === item.id;
+            const ItemIcon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => onNavigate(item.id)}
+                className={cn(
+                  'flex-1 flex flex-col items-center justify-center gap-0.5 py-1 px-1 rounded-xl transition-all text-[11px] font-semibold active:scale-95',
+                  isActive
+                    ? 'text-violet-400 bg-violet-600/15'
+                    : 'text-white/40 hover:text-white/70'
+                )}
+              >
+                <ItemIcon size={19} className={isActive ? 'text-violet-400' : 'text-white/40'} />
+                <span className="truncate max-w-[64px]">{item.label}</span>
+              </button>
+            );
+          })}
 
-      {/* Slide-in drawer (for the hamburger) */}
+        {/* 5th Tab: More (opens drawer for Insights, Parent View, Profile) */}
+        <button
+          onClick={() => setOpen(true)}
+          className={cn(
+            'flex-1 flex flex-col items-center justify-center gap-0.5 py-1 px-1 rounded-xl transition-all text-[11px] font-semibold active:scale-95 relative',
+            isMoreActive
+              ? 'text-violet-400 bg-violet-600/15'
+              : 'text-white/40 hover:text-white/70'
+          )}
+        >
+          <div className="relative">
+            <Menu size={19} className={isMoreActive ? 'text-violet-400' : 'text-white/40'} />
+            {isMoreActive && (
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-violet-400 ring-2 ring-navy-900" />
+            )}
+          </div>
+          <span className="truncate max-w-[64px]">{isMoreActive ? activeItem.label : 'More'}</span>
+        </button>
+      </nav>
+
+      {/* Slide-in drawer */}
       <AnimatePresence>
         {open && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setOpen(false)} className="fixed inset-0 bg-black/60 z-50 lg:hidden" />
-            <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed left-0 top-0 bottom-0 w-64 bg-navy-900 border-r border-white/5 z-50 p-5 lg:hidden">
-              <SidebarContent activePage={activePage} onNavigate={onNavigate} onClose={() => setOpen(false)} items={items} />
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setOpen(false)}
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 lg:hidden"
+            />
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+              className="fixed left-0 top-0 bottom-0 w-72 max-w-[85vw] bg-navy-900/98 backdrop-blur-2xl border-r border-white/10 z-50 p-5 flex flex-col shadow-2xl lg:hidden overflow-y-auto"
+            >
+              <SidebarContent
+                activePage={activePage}
+                onNavigate={onNavigate}
+                onClose={() => setOpen(false)}
+                items={items}
+              />
             </motion.div>
           </>
         )}

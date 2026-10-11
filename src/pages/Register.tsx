@@ -61,7 +61,7 @@ function CategoryPicker({ categories, onClose, onSelect }: { categories: Categor
       onClick={e => e.target === e.currentTarget && onClose()}>
       <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-        className="w-full max-w-lg bg-[#222225] rounded-t-xl overflow-hidden">
+        className="w-full max-w-lg bg-[#222225] rounded-t-2xl overflow-hidden max-h-[85vh] overflow-y-auto">
         
         {/* Header matching the image */}
         <div className="flex items-center justify-between bg-white/10 px-4 py-3 border-b border-white/5">
@@ -129,7 +129,7 @@ function AddSheet({ onClose, accounts, defaultType = 'debit' }: {
       onClick={e => e.target === e.currentTarget && onClose()}>
       <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-        className="w-full max-w-lg bg-[#1C1C1E] rounded-t-3xl border-t border-white/10 p-6 space-y-4">
+        className="w-full max-w-lg bg-[#1C1C1E] rounded-t-3xl border-t border-white/10 p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
 
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-white font-bold text-lg">New Transaction</h3>
@@ -308,10 +308,10 @@ export function Register() {
   const TABS: ViewTab[] = ['Daily', 'Monthly', 'All'];
 
   return (
-    <div className="flex flex-col min-h-screen -mx-4 sm:-mx-6 -mt-7 bg-[#111113]">
+    <div className="flex flex-col min-h-screen -mx-3 sm:-mx-6 -mt-4 sm:-mt-7 bg-[#111113]">
 
       {/* ── Top bar ── */}
-      <div className="px-4 pt-4 pb-0 bg-[#111113] sticky top-0 z-20">
+      <div className="px-3 sm:px-4 pt-3 sm:pt-4 pb-0 bg-[#111113] sticky top-14 lg:top-0 z-20">
         {/* Month nav */}
         <div className="flex items-center justify-between mb-3">
           {tab === 'All' ? (
@@ -386,18 +386,18 @@ export function Register() {
         </div>
 
         {/* Summary row */}
-        <div className="grid grid-cols-3 text-center py-3 border-b border-white/8">
+        <div className="grid grid-cols-3 text-center py-2.5 sm:py-3 border-b border-white/8">
           <div>
             <p className="text-white/40 text-xs mb-0.5">Income</p>
-            <p className="text-[#4D9FFF] font-bold text-base">{fmt(income)}</p>
+            <p className="text-[#4D9FFF] font-bold text-sm sm:text-base font-mono truncate px-1">{fmt(income)}</p>
           </div>
           <div>
             <p className="text-white/40 text-xs mb-0.5">Expenses</p>
-            <p className="text-[#FF6B6B] font-bold text-base">{fmt(expense)}</p>
+            <p className="text-[#FF6B6B] font-bold text-sm sm:text-base font-mono truncate px-1">{fmt(expense)}</p>
           </div>
           <div>
             <p className="text-white/40 text-xs mb-0.5">Total</p>
-            <p className={`font-bold text-base ${total >= 0 ? 'text-white' : 'text-[#FF6B6B]'}`}>{fmt(total)}</p>
+            <p className={`font-bold text-sm sm:text-base font-mono truncate px-1 ${total >= 0 ? 'text-white' : 'text-[#FF6B6B]'}`}>{fmt(total)}</p>
           </div>
         </div>
       </div>
@@ -469,7 +469,7 @@ export function Register() {
             onClick={e => e.target === e.currentTarget && setEditTxn(null)}>
             <motion.div initial={{ y: 60 }} animate={{ y: 0 }} exit={{ y: 60 }}
               transition={{ type: 'spring', damping: 28 }}
-              className="w-full max-w-lg bg-[#1C1C1E] rounded-t-3xl border-t border-white/10 p-6 space-y-4">
+              className="w-full max-w-lg bg-[#1C1C1E] rounded-t-3xl border-t border-white/10 p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between">
                 <h3 className="text-white font-bold text-lg">Edit Transaction</h3>
                 <button onClick={() => setEditTxn(null)} className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white/60 hover:text-white"><X size={15} /></button>
@@ -595,7 +595,7 @@ function DailyView({ txns, accounts, onDelete, onEdit }: {
                     <p className={`font-bold text-base ${txn.type === 'credit' ? 'text-[#4D9FFF]' : 'text-[#FF6B6B]'}`}>
                       {txn.type === 'credit' ? '' : ''}₹ {fmt(txn.amount)}
                     </p>
-                    <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-0.5 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       <button onClick={() => onEdit(txn)} className="p-1.5 text-white/30 hover:text-white hover:bg-white/8 rounded-lg transition-colors">
                         <Edit2 size={12} />
                       </button>

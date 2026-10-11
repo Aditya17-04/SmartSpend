@@ -508,16 +508,16 @@ export function Budgets() {
               </div>
 
               {/* Spent & Remaining stats */}
-              <div className="flex items-center gap-8 pt-1">
+              <div className="grid grid-cols-2 sm:flex sm:items-center gap-4 sm:gap-8 pt-1">
                 <div>
                   <p className="text-white/40 text-xs font-medium uppercase tracking-wider">Spent</p>
-                  <p className="text-white font-bold text-lg font-mono mt-0.5">
+                  <p className="text-white font-bold text-base sm:text-lg font-mono mt-0.5 truncate">
                     {formatCurrency(monthSpent)}
                   </p>
                 </div>
                 <div>
                   <p className="text-white/40 text-xs font-medium uppercase tracking-wider">Remaining</p>
-                  <p className={`font-bold text-lg font-mono mt-0.5 ${
+                  <p className={`font-bold text-base sm:text-lg font-mono mt-0.5 truncate ${
                     !hasBudgetConfigured 
                       ? 'text-white/60' 
                       : isOverBudget 
@@ -741,7 +741,7 @@ export function Budgets() {
                       </p>
                       
                       {/* Horizontal progress bar */}
-                      <div className="h-1.5 w-28 sm:w-48 md:w-60 bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-1.5 w-20 sm:w-48 md:w-60 bg-white/10 rounded-full overflow-hidden">
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ width: item.hasLimit ? `${Math.min(item.pct, 100)}%` : '0%' }}
@@ -760,15 +760,15 @@ export function Budgets() {
                   </div>
 
                   {/* Right side: Amount + Status + Pill + Chevron */}
-                  <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+                  <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                     <div className="text-right">
                       <p className="text-xs sm:text-sm font-semibold text-white font-mono">
                         {formatCurrency(item.spent)}{' '}
-                        <span className="text-white/40">
+                        <span className="text-white/40 hidden sm:inline">
                           {item.hasLimit ? `/ ${formatCurrency(item.limit)}` : '(No limit)'}
                         </span>
                       </p>
-                      <p className={`text-xs font-medium ${
+                      <p className={`text-[11px] sm:text-xs font-medium ${
                         !item.hasLimit 
                           ? 'text-emerald-400/80' 
                           : isOver 
@@ -786,12 +786,12 @@ export function Budgets() {
                     </div>
 
                     {/* Percentage pill */}
-                    <span className={`px-2.5 py-1 rounded-xl text-xs font-bold border font-mono ${pillBg}`}>
-                      {item.hasLimit ? `${item.pct.toFixed(0)}%` : 'Optional'}
+                    <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-xl text-[10px] sm:text-xs font-bold border font-mono ${pillBg}`}>
+                      {item.hasLimit ? `${item.pct.toFixed(0)}%` : '—'}
                     </span>
 
                     {/* Right chevron */}
-                    <ChevronRight size={16} className="text-white/30 group-hover:text-white transition-colors" />
+                    <ChevronRight size={15} className="text-white/30 group-hover:text-white transition-colors hidden sm:block" />
                   </div>
                 </motion.div>
               );
