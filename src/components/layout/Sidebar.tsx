@@ -78,9 +78,7 @@ function SidebarContent({
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className={cn('flex items-center gap-3 mb-10', collapsed ? 'justify-center' : '')}>
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center shadow-lg shadow-violet-500/30 flex-shrink-0">
-          <span className="text-lg">💜</span>
-        </div>
+
         {!collapsed && (
           <div className="flex-1">
             <p className="text-white font-bold text-lg tracking-tight leading-none">SmartSpend</p>
