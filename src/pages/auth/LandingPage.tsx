@@ -5,6 +5,7 @@ import {
   Star, CheckCircle2, Users, Brain, Lock, PieChart, MessageCircle,
   TrendingUp, TrendingDown, Bot, Bell, IndianRupee,
 } from 'lucide-react';
+import { Logo } from '../../components/shared/Logo';
 
 interface LandingPageProps {
   onLogin: () => void;
@@ -237,6 +238,7 @@ export function LandingPage({ onLogin, onRegister }: LandingPageProps) {
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#06070F]/80 backdrop-blur-2xl border-b border-white/5 shadow-2xl shadow-black/50' : ''}`}>
         <div className="max-w-7xl mx-auto px-6 md:px-10 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
+            <Logo size={32} />
             <span className="text-white font-black text-lg tracking-tight">SmartSpend</span>
           </div>
 
@@ -476,6 +478,7 @@ export function LandingPage({ onLogin, onRegister }: LandingPageProps) {
       <footer className="relative z-10 border-t border-white/[0.05] py-10 px-6 md:px-10">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-5">
           <div className="flex items-center gap-2.5">
+            <Logo size={26} />
             <span className="text-white font-black tracking-tight">SmartSpend</span>
             <span className="text-white/20 text-sm">© 2026</span>
           </div>

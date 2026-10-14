@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, ArrowLeft, Mail, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { Logo } from '../../components/shared/Logo';
 
 interface LoginProps {
   onBack: () => void;
@@ -44,9 +45,12 @@ export function Login({ onBack, onRegister }: LoginProps) {
 
         <div className="glass-card">
           {/* Header */}
-          <div className="mb-8">
-            <p className="text-white font-bold text-xl">Welcome back</p>
-            <p className="text-white/40 text-sm">Sign in to your Smart Spend account</p>
+          <div className="flex items-center gap-3 mb-8">
+            <Logo size={42} />
+            <div>
+              <p className="text-white font-bold text-xl">Welcome back</p>
+              <p className="text-white/40 text-sm">Sign in to your Smart Spend account</p>
+            </div>
           </div>
 
 

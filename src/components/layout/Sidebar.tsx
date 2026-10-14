@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Receipt, Wallet, Sparkles, Bot, UserCircle, Menu, X, ChevronRight, LogOut, Users,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { Logo } from '../shared/Logo';
 import { useFinance } from '../../context/FinanceContext';
 import { useAuth } from '../../context/AuthContext';
 
@@ -78,6 +79,7 @@ function SidebarContent({
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className={cn('flex items-center gap-3 mb-10', collapsed ? 'justify-center' : '')}>
+        <Logo size={36} />
 
         {!collapsed && (
           <div className="flex-1">
@@ -195,6 +197,7 @@ function MobileNav({ activePage, onNavigate, items }: { activePage: PageId; onNa
       {/* Top bar */}
       <header className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-navy-900/95 backdrop-blur-xl border-b border-white/8 px-4 h-14 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-2.5">
+          <Logo size={30} />
           <span className="text-white font-bold text-base tracking-tight">SmartSpend</span>
         </div>
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Eye, EyeOff, User, Mail, Lock, Check } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { Logo } from '../../components/shared/Logo';
 
 interface RegisterProps {
   onBack: () => void;
@@ -70,9 +71,12 @@ export function Register({ onBack, onLogin }: RegisterProps) {
 
         <div className="glass-card space-y-5">
           {/* Header */}
-          <div className="mb-2">
-            <p className="text-white font-bold text-xl">Create Account</p>
-            <p className="text-white/40 text-sm">Join Smart Spend — it's free</p>
+          <div className="flex items-center gap-3 mb-2">
+            <Logo size={42} />
+            <div>
+              <p className="text-white font-bold text-xl">Create Account</p>
+              <p className="text-white/40 text-sm">Join Smart Spend — it's free</p>
+            </div>
           </div>
 
           {/* Name */}
