@@ -205,7 +205,7 @@ async function geminiReply(query: string, snap: FinSnap): Promise<string> {
   try {
     res = await fetch('/api/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: ['You are SmartSpend AI — a warm, concise personal finance assistant.', 'Reply in 2–4 sentences or clean bullet points using only the supplied data.', `Question: ${query}`, `Data: ${JSON.stringify(snap)}`].join('\n\n') }),
+      body: JSON.stringify({ prompt: ['You are SmartSpend AI — a warm, concise personal finance assistant for Indian users.', 'IMPORTANT: Always use ₹ (Indian Rupee symbol) for ALL currency values. Never use $ or USD.', 'Reply in 2–4 sentences or clean bullet points using only the supplied data.', `Question: ${query}`, `Data: ${JSON.stringify(snap)}`].join('\n\n') }),
       signal: controller.signal,
     });
   } finally {
@@ -471,8 +471,15 @@ export function AskSmartSpend() {
 
     setTimeout(async () => {
       let blocks: ContentBlock[]; let chips: string[] = [];
-      try { blocks = [{ type: 'text', content: await geminiReply(query, snap) }]; chips = ['How much spent?', 'Budget status', 'Save tips']; }
-      catch { ({ blocks, chips } = buildReply(query, snap)); }
+      try {
+        blocks = [{ type: 'text', content: await geminiReply(query, snap) }];
+        chips = ['How much spent?', 'Budget status', 'Save tips'];
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'AI unavailable';
+        console.error('[SmartSpend AI] Gemini failed:', errMsg);
+        blocks = [{ type: 'text', content: `⚠️ AI error: ${errMsg}\n\nFalling back to local data:` }, ...buildReply(query, snap).blocks];
+        chips = buildReply(query, snap).chips;
+      }
       setMessages(prev => [...prev, { id: `ai-${Date.now()}`, sender: 'ai', blocks, chips, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
       setIsTyping(false);
     }, 400);

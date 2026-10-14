@@ -54,7 +54,8 @@ export function ChatWidget() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: [
-            'You are Smart Spend AI, a warm and concise personal finance assistant.',
+            'You are Smart Spend AI, a warm and concise personal finance assistant for Indian users.',
+            'IMPORTANT: Always use ₹ (Indian Rupee symbol) for ALL currency values. Never use $ or USD.',
             'Answer in 2-4 sentences using only the supplied financial data. Do not invent transactions or account details.',
             `Question: ${userMsg.text}`,
             `Financial data: ${JSON.stringify({ totalBalance, thisMonthSpent, categorySpends, goals: state.goals })}`,
