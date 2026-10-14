@@ -27,6 +27,7 @@ import {
   Pencil,
   Check,
   X,
+  Copy,
 } from "lucide-react";
 import { formatCurrency, CATEGORY_COLORS, CATEGORY_ICONS, getCategoryColor } from "../lib/utils";
 import { useFinance } from "../context/FinanceContext";
@@ -816,22 +817,11 @@ export function ParentDashboard() {
         });
       }
 
-      // Check if demo children exist in localStorage and merge any missing
+      // Ensure any legacy demo children in localStorage are removed
       try {
-        const demoRaw = localStorage.getItem('smart-spend-demo-children');
-        if (demoRaw) {
-          const demoParsed = JSON.parse(demoRaw);
-          if (Array.isArray(demoParsed) && demoParsed.length > 0) {
-            for (const d of demoParsed) {
-              if (!loadedChildren.some(c => c.child_id === d.child_id)) {
-                loadedChildren.push(d);
-              }
-            }
-            setIsParentAccount(true);
-          }
-        }
+        localStorage.removeItem('smart-spend-demo-children');
       } catch (e) {
-        console.warn('Demo children parse error:', e);
+        // ignore
       }
 
       setChildren(loadedChildren);
@@ -846,60 +836,7 @@ export function ParentDashboard() {
     void loadSharedChildren();
   }, [loadSharedChildren]);
 
-  // Demo children helper for instant multi-child simulation
-  const handleLoadDemoChildren = () => {
-    const dIso = (daysAgo: number) => {
-      const d = new Date();
-      d.setDate(d.getDate() - daysAgo);
-      return d.toISOString();
-    };
 
-    const aarav: ChildRecord = {
-      id: 'demo-child-1',
-      child_id: 'child-aarav-id',
-      name: 'Aarav (College)',
-      approved_at: new Date().toISOString(),
-      transactions: [
-        { id: 'ac-1', title: 'College Canteen', category: 'Food & Dining', amount: 340, type: 'debit', date: dIso(1), status: 'cleared', _childName: 'Aarav (College)' } as any,
-        { id: 'ac-2', title: 'Books & Stationery', category: 'Education', amount: 1450, type: 'debit', date: dIso(2), status: 'cleared', _childName: 'Aarav (College)' } as any,
-        { id: 'ac-3', title: 'Metro Smart Card', category: 'Transport', amount: 600, type: 'debit', date: dIso(3), status: 'cleared', _childName: 'Aarav (College)' } as any,
-        { id: 'ac-4', title: 'Coding Bootcamp Fee', category: 'Education', amount: 3999, type: 'debit', date: dIso(5), status: 'cleared', _childName: 'Aarav (College)' } as any,
-        { id: 'ac-5', title: 'Zomato with Friends', category: 'Food & Dining', amount: 890, type: 'debit', date: dIso(7), status: 'cleared', _childName: 'Aarav (College)' } as any,
-        { id: 'ac-6', title: 'Monthly Allowance', category: 'Allowance', amount: 10000, type: 'credit', date: dIso(1), status: 'cleared', _childName: 'Aarav (College)' } as any,
-      ],
-      budgets: [
-        { category: 'Food & Dining', limit: 3000, color: '#F59E0B' },
-        { category: 'Education', limit: 6000, color: '#3B82F6' },
-        { category: 'Transport', limit: 1500, color: '#10B981' },
-      ],
-    };
-
-    const priya: ChildRecord = {
-      id: 'demo-child-2',
-      child_id: 'child-priya-id',
-      name: 'Priya (High School)',
-      approved_at: new Date().toISOString(),
-      transactions: [
-        { id: 'pc-1', title: 'School Project Supplies', category: 'Education', amount: 780, type: 'debit', date: dIso(1), status: 'cleared', _childName: 'Priya (High School)' } as any,
-        { id: 'pc-2', title: 'Art & Sketchbook', category: 'Shopping', amount: 1250, type: 'debit', date: dIso(2), status: 'cleared', _childName: 'Priya (High School)' } as any,
-        { id: 'pc-3', title: 'Badminton Academy Fee', category: 'Health', amount: 2500, type: 'debit', date: dIso(4), status: 'cleared', _childName: 'Priya (High School)' } as any,
-        { id: 'pc-4', title: 'Ice Cream Parlour', category: 'Food & Dining', amount: 320, type: 'debit', date: dIso(6), status: 'cleared', _childName: 'Priya (High School)' } as any,
-        { id: 'pc-5', title: 'Bus Pass Monthly', category: 'Transport', amount: 450, type: 'debit', date: dIso(8), status: 'cleared', _childName: 'Priya (High School)' } as any,
-        { id: 'pc-6', title: 'Pocket Money', category: 'Allowance', amount: 6000, type: 'credit', date: dIso(1), status: 'cleared', _childName: 'Priya (High School)' } as any,
-      ],
-      budgets: [
-        { category: 'Education', limit: 2000, color: '#3B82F6' },
-        { category: 'Health', limit: 3000, color: '#EC4899' },
-        { category: 'Shopping', limit: 1500, color: '#8B5CF6' },
-      ],
-    };
-
-    const demo = [aarav, priya];
-    setChildren(demo);
-    setSelectedChildId('all');
-    setIsParentAccount(true);
-    localStorage.setItem('smart-spend-demo-children', JSON.stringify(demo));
-  };
 
   const approveInvite = async (inviteId: string) => {
     const client = supabase;
@@ -956,42 +893,7 @@ export function ParentDashboard() {
     return children.find(c => c.child_id === selectedChildId) || children[0] || null;
   }, [children, selectedChildId, isViewingAll]);
 
-  const handleAddSampleChild = () => {
-    const dIso = (daysAgo: number) => {
-      const d = new Date();
-      d.setDate(d.getDate() - daysAgo);
-      return d.toISOString();
-    };
 
-    const priya: ChildRecord = {
-      id: 'demo-child-2',
-      child_id: 'child-priya-id',
-      name: 'Priya (High School)',
-      approved_at: new Date().toISOString(),
-      transactions: [
-        { id: 'pc-1', title: 'School Project Supplies', category: 'Education', amount: 780, type: 'debit', date: dIso(1), status: 'cleared', _childName: 'Priya (High School)' } as any,
-        { id: 'pc-2', title: 'Art & Sketchbook', category: 'Shopping', amount: 1250, type: 'debit', date: dIso(2), status: 'cleared', _childName: 'Priya (High School)' } as any,
-        { id: 'pc-3', title: 'Badminton Academy Fee', category: 'Health', amount: 2500, type: 'debit', date: dIso(4), status: 'cleared', _childName: 'Priya (High School)' } as any,
-        { id: 'pc-4', title: 'Ice Cream Parlour', category: 'Food & Dining', amount: 320, type: 'debit', date: dIso(6), status: 'cleared', _childName: 'Priya (High School)' } as any,
-        { id: 'pc-5', title: 'Bus Pass Monthly', category: 'Transport', amount: 450, type: 'debit', date: dIso(8), status: 'cleared', _childName: 'Priya (High School)' } as any,
-        { id: 'pc-6', title: 'Pocket Money', category: 'Allowance', amount: 6000, type: 'credit', date: dIso(1), status: 'cleared', _childName: 'Priya (High School)' } as any,
-      ],
-      budgets: [
-        { category: 'Education', limit: 2000, color: '#3B82F6' },
-        { category: 'Health', limit: 3000, color: '#EC4899' },
-        { category: 'Shopping', limit: 1500, color: '#8B5CF6' },
-      ],
-    };
-
-    setChildren(prev => {
-      const existing = prev.filter(c => c.child_id !== priya.child_id);
-      const updated = [...existing, priya];
-      localStorage.setItem('smart-spend-demo-children', JSON.stringify(updated));
-      return updated;
-    });
-    setSelectedChildId('all');
-    setShowAddChildModal(false);
-  };
 
   const sourceTransactions = useMemo(() => {
     if (children.length === 0) {
@@ -1129,11 +1031,16 @@ export function ParentDashboard() {
             To get started, ask each child to open <strong className="text-white/70">Settings → Parent Access</strong> and enter your email address. You can accept consent from multiple children and review all their expenses in one place.
           </p>
           <button
-            onClick={handleLoadDemoChildren}
+            onClick={() => {
+              if (user?.email) {
+                navigator.clipboard.writeText(user.email);
+                alert('Parent email copied to clipboard!');
+              }
+            }}
             className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-violet-500/25 transition-all flex items-center justify-center gap-2"
           >
-            <Users size={14} />
-            <span>Load 2 Demo Children (Aarav &amp; Priya)</span>
+            <Copy size={14} />
+            <span>Copy Parent Email to Share with Child</span>
           </button>
         </div>
         <div className="flex items-start gap-3 p-4 rounded-2xl border border-white/8 bg-white/2 max-w-sm w-full">
@@ -1582,17 +1489,7 @@ export function ParentDashboard() {
                 </div>
               </div>
 
-              {/* Demo button to add Priya immediately */}
-              <div className="pt-2 border-t border-white/8 space-y-2">
-                <p className="text-white/40 text-xs text-center">Testing or demonstrating right now?</p>
-                <button
-                  onClick={handleAddSampleChild}
-                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-violet-500/20 transition-all flex items-center justify-center gap-2"
-                >
-                  <Users size={14} />
-                  <span>+ Connect Demo 2nd Child (Priya - High School)</span>
-                </button>
-              </div>
+
             </motion.div>
           </div>
         )}
