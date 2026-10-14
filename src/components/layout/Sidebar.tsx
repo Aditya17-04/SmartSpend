@@ -195,9 +195,6 @@ function MobileNav({ activePage, onNavigate, items }: { activePage: PageId; onNa
       {/* Top bar */}
       <header className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-navy-900/95 backdrop-blur-xl border-b border-white/8 px-4 h-14 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center shadow-md shadow-violet-500/20">
-            <span className="text-base">💜</span>
-          </div>
           <span className="text-white font-bold text-base tracking-tight">SmartSpend</span>
         </div>
 

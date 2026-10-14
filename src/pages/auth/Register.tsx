@@ -70,14 +70,9 @@ export function Register({ onBack, onLogin }: RegisterProps) {
 
         <div className="glass-card space-y-5">
           {/* Header */}
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
-              <span className="text-xl">💜</span>
-            </div>
-            <div>
-              <p className="text-white font-bold text-xl">Create Account</p>
-              <p className="text-white/40 text-sm">Join Smart Spend — it's free</p>
-            </div>
+          <div className="mb-2">
+            <p className="text-white font-bold text-xl">Create Account</p>
+            <p className="text-white/40 text-sm">Join Smart Spend — it's free</p>
           </div>
 
           {/* Name */}

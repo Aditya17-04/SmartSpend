@@ -43,15 +43,10 @@ export function Login({ onBack, onRegister }: LoginProps) {
         </button>
 
         <div className="glass-card">
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
-              <span className="text-xl">💜</span>
-            </div>
-            <div>
-              <p className="text-white font-bold text-xl">Welcome back</p>
-              <p className="text-white/40 text-sm">Sign in to your Smart Spend account</p>
-            </div>
+          {/* Header */}
+          <div className="mb-8">
+            <p className="text-white font-bold text-xl">Welcome back</p>
+            <p className="text-white/40 text-sm">Sign in to your Smart Spend account</p>
           </div>
 
 

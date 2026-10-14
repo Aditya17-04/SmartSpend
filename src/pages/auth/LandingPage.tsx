@@ -237,9 +237,6 @@ export function LandingPage({ onLogin, onRegister }: LandingPageProps) {
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#06070F]/80 backdrop-blur-2xl border-b border-white/5 shadow-2xl shadow-black/50' : ''}`}>
         <div className="max-w-7xl mx-auto px-6 md:px-10 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center shadow-lg shadow-violet-500/40">
-              <span className="text-base">💜</span>
-            </div>
             <span className="text-white font-black text-lg tracking-tight">SmartSpend</span>
           </div>
 
@@ -479,7 +476,6 @@ export function LandingPage({ onLogin, onRegister }: LandingPageProps) {
       <footer className="relative z-10 border-t border-white/[0.05] py-10 px-6 md:px-10">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-5">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-sm">💜</div>
             <span className="text-white font-black tracking-tight">SmartSpend</span>
             <span className="text-white/20 text-sm">© 2026</span>
           </div>

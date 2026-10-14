@@ -151,7 +151,7 @@ export function Onboarding() {
             {/* Step 0: Welcome */}
             {step === 0 && (
               <motion.div key="s0" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="text-center py-4">
-                <div className="text-6xl mb-5">💜</div>
+                <div className="text-6xl mb-5">✨</div>
                 <h1 className="text-white text-2xl font-black mb-3" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
                   Welcome, {user?.name?.split(' ')[0] ?? 'there'}!
                 </h1>
@@ -273,7 +273,7 @@ export function Onboarding() {
                     className="absolute inset-0 rounded-full border-4 border-violet-500/20 border-t-violet-500"
                   />
                   <div className="absolute inset-3 rounded-full bg-violet-500/15 flex items-center justify-center text-3xl">
-                    💜
+                    ✨
                   </div>
                 </div>
                 <h2 className="text-white font-bold text-xl mb-2">Syncing your accounts</h2>
