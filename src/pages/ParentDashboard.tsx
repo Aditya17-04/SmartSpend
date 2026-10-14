@@ -1017,46 +1017,7 @@ export function ParentDashboard() {
     setIsEditingChildName(false);
   };
 
-  // Show a "no access yet" screen if loading is done and there's no data or pending invite
-  if (!isLoading && children.length === 0 && pendingInvites.length === 0 && isParentAccount === false) {
-    return (
-      <div className="min-h-screen text-white font-sans flex flex-col items-center justify-center gap-6 pb-8 px-4">
-        <div className="w-16 h-16 rounded-2xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center">
-          <Users size={28} className="text-violet-400" />
-        </div>
-        <div className="text-center max-w-sm">
-          <h1 className="text-white font-bold text-xl mb-2">No Parent Access Yet</h1>
-          <p className="text-white/50 text-sm leading-relaxed mb-4">
-            This is a <strong className="text-white/70">multi-child parent dashboard</strong>.<br /><br />
-            To get started, ask each child to open <strong className="text-white/70">Settings → Parent Access</strong> and enter your email address. You can accept consent from multiple children and review all their expenses in one place.
-          </p>
-          <button
-            onClick={() => {
-              if (user?.email) {
-                navigator.clipboard.writeText(user.email);
-                alert('Parent email copied to clipboard!');
-              }
-            }}
-            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-violet-500/25 transition-all flex items-center justify-center gap-2"
-          >
-            <Copy size={14} />
-            <span>Copy Parent Email to Share with Child</span>
-          </button>
-        </div>
-        <div className="flex items-start gap-3 p-4 rounded-2xl border border-white/8 bg-white/2 max-w-sm w-full">
-          <div className="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <Shield size={14} className="text-emerald-400" />
-          </div>
-          <div className="space-y-1">
-            <p className="text-white/70 text-sm font-semibold">Child-controlled consent</p>
-            <p className="text-white/35 text-xs leading-relaxed">
-              Each child individually consents to share their view-only finances. You can toggle between children or view aggregated family expenses.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <div className="min-h-screen text-white font-sans pb-8">
@@ -1165,12 +1126,11 @@ export function ParentDashboard() {
           </div>
         </div>
 
-        {/* Children Switcher Bar (Always shown when children or pending invites exist) */}
-        {(children.length > 0 || pendingInvites.length > 0) && (
-          <div className="flex items-center gap-2 pb-2.5 overflow-x-auto scrollbar-none">
-            <span className="text-white/40 text-[11px] font-semibold uppercase tracking-wider mr-1 flex items-center gap-1 flex-shrink-0">
-              <Users size={12} /> Children:
-            </span>
+        {/* Children Switcher Bar */}
+        <div className="flex items-center gap-2 pb-2.5 overflow-x-auto scrollbar-none">
+          <span className="text-white/40 text-[11px] font-semibold uppercase tracking-wider mr-1 flex items-center gap-1 flex-shrink-0">
+            <Users size={12} /> Children:
+          </span>
 
             {children.length > 1 && (
               <button
@@ -1232,7 +1192,6 @@ export function ParentDashboard() {
               <span>+ Add Child</span>
             </button>
           </div>
-        )}
 
         {/* Tabs */}
         <div className="flex gap-1 pb-3 overflow-x-auto scrollbar-none">
@@ -1367,8 +1326,36 @@ export function ParentDashboard() {
         </motion.div>
       )}
 
-      {/* Tab content */}
-      <AnimatePresence mode="wait">
+      {/* Empty State when no children linked yet */}
+      {children.length === 0 && pendingInvites.length === 0 && !isLoading ? (
+        <div className="rounded-3xl border border-white/8 bg-white/2 p-6 sm:p-8 text-center max-w-md mx-auto my-12 space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center mx-auto">
+            <Users size={26} className="text-violet-400" />
+          </div>
+          <div>
+            <h2 className="text-white font-bold text-lg mb-1.5">No Connected Children Yet</h2>
+            <p className="text-white/50 text-xs sm:text-sm leading-relaxed">
+              To view a child&apos;s spending, ask them to open <strong className="text-white/80">Settings → Parent Access</strong> and enter your email address:
+            </p>
+          </div>
+          <div className="p-3 rounded-2xl bg-black/40 border border-white/10 font-mono text-xs text-violet-300 flex items-center justify-between">
+            <span className="truncate mr-2">{user?.email}</span>
+            <button
+              onClick={() => {
+                if (user?.email) {
+                  navigator.clipboard.writeText(user.email);
+                  alert('Parent email copied to clipboard!');
+                }
+              }}
+              className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-sans text-xs transition-colors flex-shrink-0"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Tab content */
+        <AnimatePresence mode="wait">
         <motion.div
           key={`${activeTab}-${selectedChildId}`}
           initial={{ opacity: 0, y: 12 }}
@@ -1418,6 +1405,7 @@ export function ParentDashboard() {
           )}
         </motion.div>
       </AnimatePresence>
+      )}
 
       {/* Privacy footer */}
       <div className="flex items-start gap-3 p-4 rounded-2xl border border-white/8 bg-white/2 mt-6">

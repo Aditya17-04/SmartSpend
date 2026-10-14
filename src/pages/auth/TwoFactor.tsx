@@ -93,9 +93,6 @@ export function TwoFactor({ email, onVerify }: TwoFactorProps) {
             )}
           </div>
 
-          <p className="text-white/25 text-xs mt-4">
-            Demo mode: any 6 digits will work
-          </p>
         </div>
       </motion.div>
     </div>
