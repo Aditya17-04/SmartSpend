@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, ArrowDownLeft, TrendingUp, Zap, Eye, EyeOff, ChevronRight } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, TrendingUp, Eye, EyeOff, ChevronRight } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip,
 } from 'recharts';
@@ -35,13 +35,6 @@ export function Dashboard() {
     );
   }
 
-  // Budget overall
-  const totalBudget = state.budgets.reduce((s, b) => s + b.limit, 0);
-  const budgetUsedPct = totalBudget > 0 ? Math.min((thisMonthSpent / totalBudget) * 100, 100) : 0;
-  const budgetRemaining = Math.max(totalBudget - thisMonthSpent, 0);
-  const isOverBudget = thisMonthSpent > totalBudget;
-
-  const topCategories = categorySpends.slice(0, 4);
 
   return (
     <motion.div variants={CONTAINER} initial="hidden" animate="show" className="space-y-5 pb-4">
@@ -85,60 +78,6 @@ export function Dashboard() {
         </div>
       </motion.div>
 
-      {/* ── Budget Progress ── */}
-      <motion.div variants={ITEM} className="glass-card">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-white font-bold text-base">Monthly Budget</h3>
-            <p className="text-white/40 text-xs mt-0.5">
-              {isOverBudget
-                ? `Over by ${formatCurrency(thisMonthSpent - totalBudget)}`
-                : `${formatCurrency(budgetRemaining)} remaining`}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className={`text-xl font-black font-mono ${isOverBudget ? 'text-red-400' : budgetUsedPct >= 80 ? 'text-yellow-400' : 'text-emerald-400'}`}>
-              {budgetUsedPct.toFixed(0)}%
-            </p>
-            <p className="text-white/30 text-xs">used</p>
-          </div>
-        </div>
-
-        {/* Bar */}
-        <div className="h-3 bg-white/8 rounded-full overflow-hidden mb-3">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${budgetUsedPct}%` }}
-            transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }}
-            className="h-full rounded-full"
-            style={{
-              background: isOverBudget
-                ? '#EF4444'
-                : budgetUsedPct >= 80
-                ? 'linear-gradient(90deg, #F59E0B, #EF4444)'
-                : 'linear-gradient(90deg, #6C63FF, #3B82F6)',
-            }}
-          />
-        </div>
-
-        <div className="flex justify-between text-xs text-white/30">
-          <span>₹0</span>
-          <span className="font-medium text-white/50">{formatCurrency(totalBudget)} budget</span>
-        </div>
-
-        {budgetUsedPct >= 80 && !isOverBudget && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs font-medium">
-            <Zap size={13} /> You're close to your budget limit — slow down on spending!
-          </motion.div>
-        )}
-        {isOverBudget && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium">
-            <Zap size={13} /> Budget exceeded! Consider reviewing your expenses.
-          </motion.div>
-        )}
-      </motion.div>
 
       {/* ── Spending Trend Mini Chart ── */}
       <motion.div variants={ITEM} className="glass-card">
@@ -166,38 +105,6 @@ export function Dashboard() {
         </div>
       </motion.div>
 
-      {/* ── Top Spending Categories ── */}
-      {topCategories.length > 0 && (
-        <motion.div variants={ITEM} className="glass-card">
-          <h3 className="text-white font-bold text-base mb-4">Where You're Spending</h3>
-          <div className="space-y-3">
-            {topCategories.map(cs => {
-              const catTotal = categorySpends.reduce((s, c) => s + c.amount, 0);
-              const pct = catTotal > 0 ? (cs.amount / catTotal) * 100 : 0;
-              return (
-                <div key={cs.category}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">{CATEGORY_ICONS[cs.category] ?? '📦'}</span>
-                      <span className="text-white/80 text-sm">{cs.category}</span>
-                    </div>
-                    <span className="text-white font-semibold text-sm font-mono">{formatCurrency(cs.amount)}</span>
-                  </div>
-                  <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.8, ease: 'easeOut' }}
-                      className="h-full rounded-full"
-                      style={{ background: CATEGORY_COLORS[cs.category] ?? '#6C63FF' }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </motion.div>
-      )}
 
       {/* ── Recent Expenses ── */}
       <motion.div variants={ITEM} className="glass-card">
