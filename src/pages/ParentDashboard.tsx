@@ -695,6 +695,8 @@ export function ParentDashboard() {
   const [isEditingChildName, setIsEditingChildName] = useState(false);
   const [tempChildName, setTempChildName] = useState('');
 
+  const [showAddChildModal, setShowAddChildModal] = useState(false);
+
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
@@ -707,76 +709,45 @@ export function ParentDashboard() {
     setIsLoading(true);
     setAccessMessage('');
     try {
-      const parentEmail = user.email.toLowerCase();
+      const parentEmail = user.email.toLowerCase().trim();
 
-      // 1. Fetch ALL pending invites addressed to this parent
-      const { data: pendingData, error: pendingError } = await client
+      // 1. Fetch ALL records for this parent from parent_access (both approved and pending)
+      let { data: accessRows, error: accessError } = await client
         .from('parent_access')
-        .select('id, child_id, parent_email, created_at')
-        .eq('parent_email', parentEmail)
-        .eq('status', 'pending');
+        .select('id, child_id, parent_id, parent_email, status, approved_at, created_at')
+        .or(`parent_id.eq.${user.id},parent_email.ilike.${parentEmail}`);
 
-      if (pendingError) {
-        console.warn('Unable to check pending consents:', pendingError.message);
-      }
-
-      const pendingList: PendingConsent[] = [];
-      if (pendingData && pendingData.length > 0) {
-        setIsParentAccount(true);
-        const childIds = pendingData.map(p => p.child_id);
-        const { data: snapData } = await client
-          .from('finance_snapshots')
-          .select('user_id, data')
-          .in('user_id', childIds);
-        const snapMap = new Map((snapData || []).map(s => [s.user_id, s.data]));
-
-        for (const p of pendingData) {
-          const snap = snapMap.get(p.child_id) as any;
-          const savedCustomName = localStorage.getItem(`smart-spend-child-name-${p.child_id}`) || '';
-          const localName = localStorage.getItem(`smart-spend-user-name-${p.child_id}`) || '';
-          const name = savedCustomName || snap?._name || snap?.name || localName || `Child (${p.child_id.slice(0, 6)})`;
-          pendingList.push({
-            id: p.id,
-            child_id: p.child_id,
-            child_name: name,
-            created_at: p.created_at,
-          });
+      if (accessError || !accessRows || accessRows.length === 0) {
+        // Fallback by email
+        const { data: emailRows } = await client
+          .from('parent_access')
+          .select('id, child_id, parent_id, parent_email, status, approved_at, created_at')
+          .ilike('parent_email', parentEmail);
+        if (emailRows && emailRows.length > 0) {
+          accessRows = emailRows;
         }
       }
+
+      const pendingData = (accessRows || []).filter(r => r.status === 'pending');
+      const approvedList = (accessRows || []).filter(r => r.status === 'approved');
+
+      // Process pending invites without querying finance_snapshots (which RLS protects)
+      const pendingList: PendingConsent[] = pendingData.map((p, idx) => {
+        const savedCustomName = localStorage.getItem(`smart-spend-child-name-${p.child_id}`) || '';
+        const localName = localStorage.getItem(`smart-spend-user-name-${p.child_id}`) || '';
+        const name = savedCustomName || localName || `Child ${approvedList.length + idx + 1}`;
+        return {
+          id: p.id,
+          child_id: p.child_id,
+          child_name: name,
+          created_at: p.created_at,
+        };
+      });
       setPendingInvites(pendingList);
 
-      // 2. Fetch ALL approved records for this parent
-      const { data: approvedList, error: approvedError } = await client
-        .from('parent_access')
-        .select('id, child_id, parent_id, parent_email, status, approved_at')
-        .or(`parent_id.eq.${user.id},parent_email.eq."${parentEmail}"`)
-        .eq('status', 'approved');
-
-      if (approvedError) {
-        setAccessMessage(`Unable to load parent access: ${approvedError.message}`);
-        return;
+      if (pendingList.length > 0) {
+        setIsParentAccount(true);
       }
-
-      if (!approvedList || approvedList.length === 0) {
-        // Fallback: check demo children in localStorage if any
-        try {
-          const demoRaw = localStorage.getItem('smart-spend-demo-children');
-          if (demoRaw) {
-            const demoParsed = JSON.parse(demoRaw);
-            if (Array.isArray(demoParsed) && demoParsed.length > 0) {
-              setChildren(demoParsed);
-              setIsParentAccount(true);
-              return;
-            }
-          }
-        } catch (e) {
-          console.warn('Demo children parse error:', e);
-        }
-        setChildren([]);
-        return;
-      }
-
-      setIsParentAccount(true);
 
       // Auto-link parent_id for any approved records
       for (const record of approvedList) {
@@ -790,10 +761,18 @@ export function ParentDashboard() {
 
       // 3. Batch fetch snapshots for all approved children
       const approvedChildIds = Array.from(new Set(approvedList.map(a => a.child_id)));
-      const { data: snapshots } = await client
-        .from('finance_snapshots')
-        .select('user_id, data')
-        .in('user_id', approvedChildIds);
+      let snapshots: any[] = [];
+      if (approvedChildIds.length > 0) {
+        setIsParentAccount(true);
+        const { data: snapData, error: snapErr } = await client
+          .from('finance_snapshots')
+          .select('user_id, data')
+          .in('user_id', approvedChildIds);
+        if (snapErr) {
+          console.warn('finance_snapshots fetch note:', snapErr.message);
+        }
+        snapshots = snapData || [];
+      }
 
       const snapshotMap = new Map((snapshots || []).map(s => [s.user_id, s.data]));
       const loadedChildren: ChildRecord[] = [];
@@ -835,6 +814,24 @@ export function ParentDashboard() {
           budgets: childData?.budgets ?? [],
           approved_at: record.approved_at,
         });
+      }
+
+      // Check if demo children exist in localStorage and merge any missing
+      try {
+        const demoRaw = localStorage.getItem('smart-spend-demo-children');
+        if (demoRaw) {
+          const demoParsed = JSON.parse(demoRaw);
+          if (Array.isArray(demoParsed) && demoParsed.length > 0) {
+            for (const d of demoParsed) {
+              if (!loadedChildren.some(c => c.child_id === d.child_id)) {
+                loadedChildren.push(d);
+              }
+            }
+            setIsParentAccount(true);
+          }
+        }
+      } catch (e) {
+        console.warn('Demo children parse error:', e);
       }
 
       setChildren(loadedChildren);
@@ -951,12 +948,50 @@ export function ParentDashboard() {
     }
   };
 
-  const isViewingAll = selectedChildId === 'all' || (children.length > 1 && !children.some(c => c.child_id === selectedChildId));
+  const isViewingAll = children.length > 1 && (selectedChildId === 'all' || !children.some(c => c.child_id === selectedChildId));
 
   const activeChild = useMemo(() => {
     if (isViewingAll) return null;
+    if (children.length === 1) return children[0];
     return children.find(c => c.child_id === selectedChildId) || children[0] || null;
   }, [children, selectedChildId, isViewingAll]);
+
+  const handleAddSampleChild = () => {
+    const dIso = (daysAgo: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() - daysAgo);
+      return d.toISOString();
+    };
+
+    const priya: ChildRecord = {
+      id: 'demo-child-2',
+      child_id: 'child-priya-id',
+      name: 'Priya (High School)',
+      approved_at: new Date().toISOString(),
+      transactions: [
+        { id: 'pc-1', title: 'School Project Supplies', category: 'Education', amount: 780, type: 'debit', date: dIso(1), status: 'cleared', _childName: 'Priya (High School)' } as any,
+        { id: 'pc-2', title: 'Art & Sketchbook', category: 'Shopping', amount: 1250, type: 'debit', date: dIso(2), status: 'cleared', _childName: 'Priya (High School)' } as any,
+        { id: 'pc-3', title: 'Badminton Academy Fee', category: 'Health', amount: 2500, type: 'debit', date: dIso(4), status: 'cleared', _childName: 'Priya (High School)' } as any,
+        { id: 'pc-4', title: 'Ice Cream Parlour', category: 'Food & Dining', amount: 320, type: 'debit', date: dIso(6), status: 'cleared', _childName: 'Priya (High School)' } as any,
+        { id: 'pc-5', title: 'Bus Pass Monthly', category: 'Transport', amount: 450, type: 'debit', date: dIso(8), status: 'cleared', _childName: 'Priya (High School)' } as any,
+        { id: 'pc-6', title: 'Pocket Money', category: 'Allowance', amount: 6000, type: 'credit', date: dIso(1), status: 'cleared', _childName: 'Priya (High School)' } as any,
+      ],
+      budgets: [
+        { category: 'Education', limit: 2000, color: '#3B82F6' },
+        { category: 'Health', limit: 3000, color: '#EC4899' },
+        { category: 'Shopping', limit: 1500, color: '#8B5CF6' },
+      ],
+    };
+
+    setChildren(prev => {
+      const existing = prev.filter(c => c.child_id !== priya.child_id);
+      const updated = [...existing, priya];
+      localStorage.setItem('smart-spend-demo-children', JSON.stringify(updated));
+      return updated;
+    });
+    setSelectedChildId('all');
+    setShowAddChildModal(false);
+  };
 
   const sourceTransactions = useMemo(() => {
     if (children.length === 0) {
@@ -1223,33 +1258,36 @@ export function ParentDashboard() {
           </div>
         </div>
 
-        {/* Children Switcher Bar (when multiple children exist) */}
-        {children.length > 1 && (
+        {/* Children Switcher Bar (Always shown when children or pending invites exist) */}
+        {(children.length > 0 || pendingInvites.length > 0) && (
           <div className="flex items-center gap-2 pb-2.5 overflow-x-auto scrollbar-none">
-            <span className="text-white/40 text-[11px] font-semibold uppercase tracking-wider mr-1 flex items-center gap-1">
+            <span className="text-white/40 text-[11px] font-semibold uppercase tracking-wider mr-1 flex items-center gap-1 flex-shrink-0">
               <Users size={12} /> Children:
             </span>
-            <button
-              onClick={() => setSelectedChildId('all')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                isViewingAll
-                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/25 border border-violet-400/30'
-                  : 'bg-white/5 text-white/50 hover:text-white hover:bg-white/10 border border-white/8'
-              }`}
-            >
-              <span>All Children</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-white font-mono">
-                {children.length}
-              </span>
-            </button>
+
+            {children.length > 1 && (
+              <button
+                onClick={() => setSelectedChildId('all')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${
+                  isViewingAll
+                    ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/25 border border-violet-400/30'
+                    : 'bg-white/5 text-white/50 hover:text-white hover:bg-white/10 border border-white/8'
+                }`}
+              >
+                <span>All Children</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-white font-mono">
+                  {children.length}
+                </span>
+              </button>
+            )}
 
             {children.map(c => {
-              const isSelected = !isViewingAll && activeChild?.child_id === c.child_id;
+              const isSelected = !isViewingAll && (activeChild?.child_id === c.child_id || (children.length === 1 && selectedChildId !== 'all'));
               return (
                 <button
                   key={c.child_id}
                   onClick={() => setSelectedChildId(c.child_id)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${
                     isSelected
                       ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/25 border border-violet-400/30'
                       : 'bg-white/5 text-white/50 hover:text-white hover:bg-white/10 border border-white/8'
@@ -1262,6 +1300,30 @@ export function ParentDashboard() {
                 </button>
               );
             })}
+
+            {/* Any pending children in the bar */}
+            {pendingInvites.map(p => (
+              <button
+                key={p.id}
+                onClick={() => approveInvite(p.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 flex-shrink-0"
+                title="Pending consent - click to approve"
+              >
+                <Bell size={11} className="animate-bounce" />
+                <span>{p.child_name}</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-amber-400 text-black font-extrabold">
+                  Approve
+                </span>
+              </button>
+            ))}
+
+            {/* Connect another child */}
+            <button
+              onClick={() => setShowAddChildModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap bg-white/5 hover:bg-white/10 text-violet-300 hover:text-white border border-dashed border-violet-500/30 hover:border-violet-400 transition-all flex-shrink-0"
+            >
+              <span>+ Add Child</span>
+            </button>
           </div>
         )}
 
@@ -1466,6 +1528,75 @@ export function ParentDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Add / Connect Child Modal */}
+      <AnimatePresence>
+        {showAddChildModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-md bg-[#161618] border border-white/10 rounded-3xl p-6 shadow-2xl space-y-5"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-violet-500/15 border border-violet-500/25 flex items-center justify-center text-violet-400">
+                    <Users size={18} />
+                  </div>
+                  <h2 className="text-white font-bold text-lg">Connect Another Child</h2>
+                </div>
+                <button
+                  onClick={() => setShowAddChildModal(false)}
+                  className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-sm">
+                <div className="p-3.5 rounded-2xl bg-white/4 border border-white/8 space-y-1.5">
+                  <p className="text-white/60 text-xs font-semibold">Step 1: On your child&apos;s device/account</p>
+                  <p className="text-white text-xs leading-relaxed">
+                    Ask your child to log into SmartSpend, go to <strong className="text-emerald-400">Settings → Parent Access</strong>, and enter your email:
+                  </p>
+                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-black/40 border border-white/10 font-mono text-xs text-violet-300">
+                    <span className="truncate mr-2">{user?.email}</span>
+                    <button
+                      onClick={() => {
+                        if (user?.email) navigator.clipboard.writeText(user.email);
+                        alert('Parent email copied to clipboard!');
+                      }}
+                      className="text-white/60 hover:text-white text-[11px] font-sans px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 transition-colors flex-shrink-0"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-white/4 border border-white/8 space-y-1">
+                  <p className="text-white/60 text-xs font-semibold">Step 2: Consent Request &amp; Approval</p>
+                  <p className="text-white/40 text-xs leading-relaxed">
+                    Once they tap <strong className="text-white/70">&quot;Send consent&quot;</strong>, an approval prompt appears right in your Children bar for you to approve with one click.
+                  </p>
+                </div>
+              </div>
+
+              {/* Demo button to add Priya immediately */}
+              <div className="pt-2 border-t border-white/8 space-y-2">
+                <p className="text-white/40 text-xs text-center">Testing or demonstrating right now?</p>
+                <button
+                  onClick={handleAddSampleChild}
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-violet-500/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <Users size={14} />
+                  <span>+ Connect Demo 2nd Child (Priya - High School)</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
