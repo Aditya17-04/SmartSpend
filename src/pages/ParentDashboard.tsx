@@ -92,9 +92,17 @@ function EmptyState({ message }: { message: string }) {
 
 // ─── Tab Panels ───────────────────────────────────────────────────────────────
 
+interface ChildSpendSummary {
+  childId: string;
+  name: string;
+  spent: number;
+  txCount: number;
+}
+
 function OverviewTab({
   transactions, budgets, monthLabel, year,
   totalSpent, totalIncome, totalBudget, childName,
+  childrenSummaries, onSelectChild,
 }: {
   transactions: Transaction[];
   budgets: Budget[];
@@ -104,6 +112,8 @@ function OverviewTab({
   totalIncome: number;
   totalBudget: number;
   childName: string;
+  childrenSummaries?: ChildSpendSummary[];
+  onSelectChild?: (childId: string) => void;
 }) {
   const remaining = Math.max(totalBudget - totalSpent, 0);
   const budgetPct = totalBudget > 0 ? Math.min((totalSpent / totalBudget) * 100, 100) : 0;
@@ -165,6 +175,56 @@ function OverviewTab({
         <StatCard label="Saved" value={formatCurrency(Math.abs(saved))} sub={saved >= 0 ? "Saved" : "Deficit"} subColor={saved >= 0 ? "text-emerald-400" : "text-red-400"} />
         <StatCard label="Budget Used" value={totalBudget > 0 ? `${budgetPct.toFixed(0)}%` : "—"} sub={budgetPct >= 100 ? "Over!" : budgetPct >= 80 ? "Almost" : "On track"} subColor={budgetPct >= 100 ? "text-red-400" : budgetPct >= 80 ? "text-amber-400" : "text-emerald-400"} />
       </motion.div>
+
+      {/* Children Breakdown Card (when viewing multiple children) */}
+      {childrenSummaries && childrenSummaries.length > 1 && (
+        <motion.div variants={ITEM} className="glass-card space-y-3.5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-white font-bold text-base flex items-center gap-2">
+              <Users size={16} className="text-violet-400" />
+              <span>Children Spending Breakdown</span>
+            </h2>
+            <span className="text-white/40 text-xs">{childrenSummaries.length} children active</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {childrenSummaries.map(c => {
+              const pct = totalSpent > 0 ? (c.spent / totalSpent) * 100 : 0;
+              return (
+                <div
+                  key={c.childId}
+                  onClick={() => onSelectChild?.(c.childId)}
+                  className="p-3.5 rounded-2xl bg-white/4 hover:bg-white/8 border border-white/8 hover:border-violet-500/30 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center text-white font-bold text-xs shadow-md">
+                        {c.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-white text-sm font-semibold group-hover:text-violet-300 transition-colors">
+                          {c.name}
+                        </p>
+                        <p className="text-white/40 text-xs">{c.txCount} transactions</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-white font-mono font-bold text-sm">{formatCurrency(c.spent)}</p>
+                      <p className="text-white/40 text-[11px]">{pct.toFixed(0)}% of total</p>
+                    </div>
+                  </div>
+                  <div className="h-1.5 bg-white/8 rounded-full overflow-hidden w-full">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-700"
+                      style={{ width: `${Math.min(pct, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
 
       {/* Top Spending Categories */}
       {topCategories.length > 0 ? (
@@ -248,7 +308,14 @@ function OverviewTab({
   );
 }
 
-function ExpensesTab({ transactions, childName, monthLabel }: { transactions: Transaction[]; childName: string; monthLabel: string }) {
+function ExpensesTab({
+  transactions, childName, monthLabel, isViewingAll = false,
+}: {
+  transactions: Transaction[];
+  childName: string;
+  monthLabel: string;
+  isViewingAll?: boolean;
+}) {
   const [filter, setFilter] = useState<"all" | "debit" | "credit">("debit");
   const filtered = transactions.filter(t => filter === "all" || t.type === filter);
 
@@ -287,6 +354,7 @@ function ExpensesTab({ transactions, childName, monthLabel }: { transactions: Tr
             const color = getCategoryColor(exp.category);
             const icon = CATEGORY_ICONS[exp.category] ?? "📦";
             const isCredit = exp.type === "credit";
+            const itemChildName = (exp as any)._childName;
             return (
               <motion.div key={exp.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i * 0.04, 0.4) }}
                 className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-white/4 transition-colors"
@@ -295,7 +363,14 @@ function ExpensesTab({ transactions, childName, monthLabel }: { transactions: Tr
                   {icon}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-semibold truncate">{exp.title}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-white text-sm font-semibold truncate">{exp.title}</p>
+                    {(itemChildName || isViewingAll) && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-violet-500/15 text-violet-300 border border-violet-500/25 flex-shrink-0">
+                        {itemChildName || childName}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-white/35 text-xs truncate">{exp.category} · {exp.status}</p>
                 </div>
                 <div className="text-right flex-shrink-0">
@@ -592,16 +667,31 @@ function InsightsTab({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+interface ChildRecord {
+  id: string; // parent_access id
+  child_id: string; // user id of child
+  name: string;
+  transactions: Transaction[];
+  budgets: Budget[];
+  approved_at?: string;
+}
+
+interface PendingConsent {
+  id: string;
+  child_id: string;
+  child_name: string;
+  created_at?: string;
+}
+
 export function ParentDashboard() {
-  const { state, categoryBudgetStatus } = useFinance();
+  const { state } = useFinance();
   const { user } = useAuth();
-  const [sharedChild, setSharedChild] = useState<{ name: string; transactions: Transaction[]; budgets: Budget[] } | null>(null);
-  const [pendingInvite, setPendingInvite] = useState<{ id: string } | null>(null);
+  const [children, setChildren] = useState<ChildRecord[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingConsent[]>([]);
+  const [selectedChildId, setSelectedChildId] = useState<string>('all'); // 'all' or specific child_id
   const [accessMessage, setAccessMessage] = useState('');
   const [isParentAccount, setIsParentAccount] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [childId, setChildId] = useState<string | null>(null);
-  const [customChildName, setCustomChildName] = useState<string>('');
   const [isEditingChildName, setIsEditingChildName] = useState(false);
   const [tempChildName, setTempChildName] = useState('');
 
@@ -611,143 +701,308 @@ export function ParentDashboard() {
   const [monthOpen, setMonthOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
-  const loadSharedChild = useCallback(async () => {
+  const loadSharedChildren = useCallback(async () => {
     const client = supabase;
     if (!client || !user?.email) return;
     setIsLoading(true);
     setAccessMessage('');
     try {
-      // 1. Check for pending invite addressed to this email
-      const { data: pending, error: pendingError } = await client
+      const parentEmail = user.email.toLowerCase();
+
+      // 1. Fetch ALL pending invites addressed to this parent
+      const { data: pendingData, error: pendingError } = await client
         .from('parent_access')
-        .select('id')
-        .eq('parent_email', user.email.toLowerCase())
-        .eq('status', 'pending')
-        .maybeSingle();
+        .select('id, child_id, parent_email, created_at')
+        .eq('parent_email', parentEmail)
+        .eq('status', 'pending');
+
       if (pendingError) {
-        setAccessMessage(`Unable to check consent: ${pendingError.message}`);
-        return;
-      }
-      if (pending) {
-        setPendingInvite(pending);
-        setIsParentAccount(true);
+        console.warn('Unable to check pending consents:', pendingError.message);
       }
 
-      // 2. Check for an already-approved access record (match by parent_id OR by email)
-      const { data: approved, error: approvedError } = await client
+      const pendingList: PendingConsent[] = [];
+      if (pendingData && pendingData.length > 0) {
+        setIsParentAccount(true);
+        const childIds = pendingData.map(p => p.child_id);
+        const { data: snapData } = await client
+          .from('finance_snapshots')
+          .select('user_id, data')
+          .in('user_id', childIds);
+        const snapMap = new Map((snapData || []).map(s => [s.user_id, s.data]));
+
+        for (const p of pendingData) {
+          const snap = snapMap.get(p.child_id) as any;
+          const savedCustomName = localStorage.getItem(`smart-spend-child-name-${p.child_id}`) || '';
+          const localName = localStorage.getItem(`smart-spend-user-name-${p.child_id}`) || '';
+          const name = savedCustomName || snap?._name || snap?.name || localName || `Child (${p.child_id.slice(0, 6)})`;
+          pendingList.push({
+            id: p.id,
+            child_id: p.child_id,
+            child_name: name,
+            created_at: p.created_at,
+          });
+        }
+      }
+      setPendingInvites(pendingList);
+
+      // 2. Fetch ALL approved records for this parent
+      const { data: approvedList, error: approvedError } = await client
         .from('parent_access')
-        .select('id, child_id, parent_id, parent_email, status')
-        .or(`parent_id.eq.${user.id},parent_email.eq."${user.email.toLowerCase()}"`)
-        .eq('status', 'approved')
-        .maybeSingle();
+        .select('id, child_id, parent_id, parent_email, status, approved_at')
+        .or(`parent_id.eq.${user.id},parent_email.eq."${parentEmail}"`)
+        .eq('status', 'approved');
+
       if (approvedError) {
         setAccessMessage(`Unable to load parent access: ${approvedError.message}`);
         return;
       }
-      if (!approved) return;
 
-      setIsParentAccount(true);
-
-      // Auto-link parent_id if currently null or mismatched
-      if (approved.parent_id !== user.id) {
-        console.log('Auto-linking parent_id to current user...', user.id);
-        const { error: linkErr } = await client
-          .from('parent_access')
-          .update({ parent_id: user.id, approved_at: new Date().toISOString() })
-          .eq('id', approved.id);
-        if (linkErr) {
-          console.warn('Could not auto-link parent_id:', linkErr.message);
-        }
-      }
-
-      // 3. Fetch the child's finance snapshot
-      setChildId(approved.child_id);
-      const savedCustomName = localStorage.getItem(`smart-spend-child-name-${approved.child_id}`) || '';
-      if (savedCustomName) {
-        setCustomChildName(savedCustomName);
-      }
-
-      const { data: snapshot, error: snapshotError } = await client
-        .from('finance_snapshots')
-        .select('data')
-        .eq('user_id', approved.child_id)
-        .maybeSingle();
-
-      let child = snapshot?.data as { transactions?: Transaction[]; budgets?: Budget[]; _name?: string; name?: string } | undefined;
-
-      // 4. Fallback: Local storage cache (for same-browser testing or offline cache)
-      if (!child || (!child.transactions?.length && !child.budgets?.length)) {
+      if (!approvedList || approvedList.length === 0) {
+        // Fallback: check demo children in localStorage if any
         try {
-          const localChildRaw = localStorage.getItem(`smart-spend-finance-${approved.child_id}`);
-          if (localChildRaw) {
-            const parsed = JSON.parse(localChildRaw);
-            if (parsed.transactions?.length || parsed.budgets?.length) {
-              child = {
-                ...parsed,
-                _name: child?._name ?? parsed._name ?? parsed.name,
-              };
-              console.log('Loaded child data from local storage cache');
+          const demoRaw = localStorage.getItem('smart-spend-demo-children');
+          if (demoRaw) {
+            const demoParsed = JSON.parse(demoRaw);
+            if (Array.isArray(demoParsed) && demoParsed.length > 0) {
+              setChildren(demoParsed);
+              setIsParentAccount(true);
+              return;
             }
           }
         } catch (e) {
-          console.warn('Could not read local child storage fallback:', e);
+          console.warn('Demo children parse error:', e);
         }
-      }
-
-      // Check for name from various sources
-      const localChildProfileName = localStorage.getItem(`smart-spend-user-name-${approved.child_id}`) || '';
-      const inferredName = savedCustomName || child?._name || child?.name || localChildProfileName || (approved as any).child_name || '';
-
-      if (inferredName && inferredName !== 'Your Child') {
-        setCustomChildName(inferredName);
-      }
-
-      if (snapshotError && !child) {
-        console.error('Child snapshot query error:', snapshotError);
-        setAccessMessage(`Access is approved, but child data could not be fetched (${snapshotError.message}). Check database permissions or tap Refresh.`);
+        setChildren([]);
         return;
       }
 
-      if (child && ((child.transactions && child.transactions.length > 0) || (child.budgets && child.budgets.length > 0))) {
-        setSharedChild({
-          name: inferredName || child._name || child.name || 'Your Child',
-          transactions: child.transactions ?? [],
-          budgets: child.budgets ?? [],
-        });
-        setAccessMessage('');
-      } else {
-        setAccessMessage('Access is approved! However, your child has not synced any transactions yet. Ask them to open Settings and tap "Sync to Parent".');
+      setIsParentAccount(true);
+
+      // Auto-link parent_id for any approved records
+      for (const record of approvedList) {
+        if (record.parent_id !== user.id) {
+          client.from('parent_access')
+            .update({ parent_id: user.id, approved_at: record.approved_at || new Date().toISOString() })
+            .eq('id', record.id)
+            .then();
+        }
       }
+
+      // 3. Batch fetch snapshots for all approved children
+      const approvedChildIds = Array.from(new Set(approvedList.map(a => a.child_id)));
+      const { data: snapshots } = await client
+        .from('finance_snapshots')
+        .select('user_id, data')
+        .in('user_id', approvedChildIds);
+
+      const snapshotMap = new Map((snapshots || []).map(s => [s.user_id, s.data]));
+      const loadedChildren: ChildRecord[] = [];
+
+      for (let i = 0; i < approvedList.length; i++) {
+        const record = approvedList[i];
+        let childData = snapshotMap.get(record.child_id) as any;
+
+        // Fallback to local storage cache if cloud snapshot is empty
+        if (!childData || (!childData.transactions?.length && !childData.budgets?.length)) {
+          try {
+            const localRaw = localStorage.getItem(`smart-spend-finance-${record.child_id}`);
+            if (localRaw) {
+              const parsed = JSON.parse(localRaw);
+              if (parsed.transactions?.length || parsed.budgets?.length) {
+                childData = { ...parsed, _name: childData?._name ?? parsed._name ?? parsed.name };
+              }
+            }
+          } catch (e) {
+            console.warn('Local storage fallback error:', e);
+          }
+        }
+
+        const savedCustomName = localStorage.getItem(`smart-spend-child-name-${record.child_id}`) || '';
+        const localName = localStorage.getItem(`smart-spend-user-name-${record.child_id}`) || '';
+        const finalName = savedCustomName || childData?._name || childData?.name || localName || `Child ${i + 1}`;
+
+        const txs: Transaction[] = (childData?.transactions ?? []).map((t: any) => ({
+          ...t,
+          _childName: finalName,
+          _childId: record.child_id,
+        }));
+
+        loadedChildren.push({
+          id: record.id,
+          child_id: record.child_id,
+          name: finalName,
+          transactions: txs,
+          budgets: childData?.budgets ?? [],
+          approved_at: record.approved_at,
+        });
+      }
+
+      setChildren(loadedChildren);
+    } catch (err: any) {
+      setAccessMessage(err?.message || 'Error loading children');
     } finally {
       setIsLoading(false);
     }
   }, [user]);
 
   useEffect(() => {
-    void loadSharedChild();
-  }, [loadSharedChild]);
+    void loadSharedChildren();
+  }, [loadSharedChildren]);
 
-  const approveInvite = async () => {
-    const client = supabase;
-    if (!client || !pendingInvite || !user) return;
-    setIsLoading(true);
-    const { error } = await client
-      .from('parent_access')
-      .update({ parent_id: user.id, status: 'approved', approved_at: new Date().toISOString() })
-      .eq('id', pendingInvite.id);
-    if (error) {
-      setAccessMessage(error.message);
-      setIsLoading(false);
-      return;
-    }
-    setPendingInvite(null);
-    // Re-run the full load to pick up child data now that parent_id is set
-    await loadSharedChild();
+  // Demo children helper for instant multi-child simulation
+  const handleLoadDemoChildren = () => {
+    const dIso = (daysAgo: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() - daysAgo);
+      return d.toISOString();
+    };
+
+    const aarav: ChildRecord = {
+      id: 'demo-child-1',
+      child_id: 'child-aarav-id',
+      name: 'Aarav (College)',
+      approved_at: new Date().toISOString(),
+      transactions: [
+        { id: 'ac-1', title: 'College Canteen', category: 'Food & Dining', amount: 340, type: 'debit', date: dIso(1), status: 'cleared', _childName: 'Aarav (College)' } as any,
+        { id: 'ac-2', title: 'Books & Stationery', category: 'Education', amount: 1450, type: 'debit', date: dIso(2), status: 'cleared', _childName: 'Aarav (College)' } as any,
+        { id: 'ac-3', title: 'Metro Smart Card', category: 'Transport', amount: 600, type: 'debit', date: dIso(3), status: 'cleared', _childName: 'Aarav (College)' } as any,
+        { id: 'ac-4', title: 'Coding Bootcamp Fee', category: 'Education', amount: 3999, type: 'debit', date: dIso(5), status: 'cleared', _childName: 'Aarav (College)' } as any,
+        { id: 'ac-5', title: 'Zomato with Friends', category: 'Food & Dining', amount: 890, type: 'debit', date: dIso(7), status: 'cleared', _childName: 'Aarav (College)' } as any,
+        { id: 'ac-6', title: 'Monthly Allowance', category: 'Allowance', amount: 10000, type: 'credit', date: dIso(1), status: 'cleared', _childName: 'Aarav (College)' } as any,
+      ],
+      budgets: [
+        { category: 'Food & Dining', limit: 3000, color: '#F59E0B' },
+        { category: 'Education', limit: 6000, color: '#3B82F6' },
+        { category: 'Transport', limit: 1500, color: '#10B981' },
+      ],
+    };
+
+    const priya: ChildRecord = {
+      id: 'demo-child-2',
+      child_id: 'child-priya-id',
+      name: 'Priya (High School)',
+      approved_at: new Date().toISOString(),
+      transactions: [
+        { id: 'pc-1', title: 'School Project Supplies', category: 'Education', amount: 780, type: 'debit', date: dIso(1), status: 'cleared', _childName: 'Priya (High School)' } as any,
+        { id: 'pc-2', title: 'Art & Sketchbook', category: 'Shopping', amount: 1250, type: 'debit', date: dIso(2), status: 'cleared', _childName: 'Priya (High School)' } as any,
+        { id: 'pc-3', title: 'Badminton Academy Fee', category: 'Health', amount: 2500, type: 'debit', date: dIso(4), status: 'cleared', _childName: 'Priya (High School)' } as any,
+        { id: 'pc-4', title: 'Ice Cream Parlour', category: 'Food & Dining', amount: 320, type: 'debit', date: dIso(6), status: 'cleared', _childName: 'Priya (High School)' } as any,
+        { id: 'pc-5', title: 'Bus Pass Monthly', category: 'Transport', amount: 450, type: 'debit', date: dIso(8), status: 'cleared', _childName: 'Priya (High School)' } as any,
+        { id: 'pc-6', title: 'Pocket Money', category: 'Allowance', amount: 6000, type: 'credit', date: dIso(1), status: 'cleared', _childName: 'Priya (High School)' } as any,
+      ],
+      budgets: [
+        { category: 'Education', limit: 2000, color: '#3B82F6' },
+        { category: 'Health', limit: 3000, color: '#EC4899' },
+        { category: 'Shopping', limit: 1500, color: '#8B5CF6' },
+      ],
+    };
+
+    const demo = [aarav, priya];
+    setChildren(demo);
+    setSelectedChildId('all');
+    setIsParentAccount(true);
+    localStorage.setItem('smart-spend-demo-children', JSON.stringify(demo));
   };
 
-  const sourceTransactions = sharedChild?.transactions ?? (isParentAccount ? [] : state.transactions);
-  const visibleTransactions = Array.from(new Map(sourceTransactions.map(transaction => [transaction.id, transaction])).values());
-  const visibleBudgets = sharedChild?.budgets ?? (isParentAccount ? [] : state.budgets);
+  const approveInvite = async (inviteId: string) => {
+    const client = supabase;
+    if (!client || !user) return;
+    setIsLoading(true);
+    setAccessMessage('');
+    try {
+      const { error } = await client
+        .from('parent_access')
+        .update({ parent_id: user.id, status: 'approved', approved_at: new Date().toISOString() })
+        .eq('id', inviteId);
+      if (error) {
+        setAccessMessage(error.message);
+        return;
+      }
+      setPendingInvites(prev => prev.filter(p => p.id !== inviteId));
+      await loadSharedChildren();
+    } catch (e: any) {
+      setAccessMessage(e?.message || 'Approval failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const approveAllInvites = async () => {
+    const client = supabase;
+    if (!client || !user || pendingInvites.length === 0) return;
+    setIsLoading(true);
+    setAccessMessage('');
+    try {
+      const inviteIds = pendingInvites.map(p => p.id);
+      const { error } = await client
+        .from('parent_access')
+        .update({ parent_id: user.id, status: 'approved', approved_at: new Date().toISOString() })
+        .in('id', inviteIds);
+      if (error) {
+        setAccessMessage(error.message);
+        return;
+      }
+      setPendingInvites([]);
+      await loadSharedChildren();
+    } catch (e: any) {
+      setAccessMessage(e?.message || 'Approval failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const isViewingAll = selectedChildId === 'all' || (children.length > 1 && !children.some(c => c.child_id === selectedChildId));
+
+  const activeChild = useMemo(() => {
+    if (isViewingAll) return null;
+    return children.find(c => c.child_id === selectedChildId) || children[0] || null;
+  }, [children, selectedChildId, isViewingAll]);
+
+  const sourceTransactions = useMemo(() => {
+    if (children.length === 0) {
+      return isParentAccount ? [] : state.transactions;
+    }
+    if (activeChild) {
+      return activeChild.transactions;
+    }
+    const allTxs: Transaction[] = [];
+    children.forEach(c => {
+      c.transactions.forEach(t => {
+        allTxs.push({
+          ...t,
+          _childName: c.name,
+          _childId: c.child_id,
+        } as any);
+      });
+    });
+    return allTxs;
+  }, [children, activeChild, isParentAccount, state.transactions]);
+
+  const visibleTransactions = useMemo(() => {
+    return Array.from(new Map(sourceTransactions.map(t => [t.id, t])).values());
+  }, [sourceTransactions]);
+
+  const visibleBudgets = useMemo(() => {
+    if (children.length === 0) {
+      return isParentAccount ? [] : state.budgets;
+    }
+    if (activeChild) {
+      return activeChild.budgets;
+    }
+    // Combined budgets
+    const combinedMap = new Map<string, Budget>();
+    children.forEach(c => {
+      c.budgets.forEach(b => {
+        const existing = combinedMap.get(b.category);
+        if (existing) {
+          combinedMap.set(b.category, { ...existing, limit: existing.limit + b.limit });
+        } else {
+          combinedMap.set(b.category, { ...b });
+        }
+      });
+    });
+    return Array.from(combinedMap.values());
+  }, [children, activeChild, isParentAccount, state.budgets]);
 
   // Auto-switch to active month if current calendar month has no data
   useEffect(() => {
@@ -791,24 +1046,42 @@ export function ParentDashboard() {
   const totalIncome = useMemo(() => monthTransactions.filter(t => t.type === "credit").reduce((s, t) => s + t.amount, 0), [monthTransactions]);
   const totalBudget = visibleBudgets.reduce((s, b) => s + b.limit, 0);
 
-  const childName = customChildName || (sharedChild?.name && sharedChild.name !== 'Your Child' ? sharedChild.name : 'Your Child');
+  const childName = isViewingAll
+    ? (children.length > 0 ? `All Children (${children.length})` : 'All Children')
+    : (activeChild?.name ?? 'Your Child');
+
+  // Breakdown by child for OverviewTab
+  const childrenSummaries = useMemo(() => {
+    return children.map(c => {
+      const childMonthDebits = c.transactions.filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear && t.type === 'debit';
+      });
+      const spent = childMonthDebits.reduce((s, t) => s + t.amount, 0);
+      return {
+        childId: c.child_id,
+        name: c.name,
+        spent,
+        txCount: childMonthDebits.length,
+      };
+    });
+  }, [children, selectedMonth, selectedYear]);
 
   const handleSaveChildName = () => {
     const trimmed = tempChildName.trim();
-    if (!trimmed) {
+    if (!trimmed || !activeChild) {
       setIsEditingChildName(false);
       return;
     }
-    setCustomChildName(trimmed);
-    if (childId) {
-      localStorage.setItem(`smart-spend-child-name-${childId}`, trimmed);
-    }
-    setSharedChild(prev => prev ? { ...prev, name: trimmed } : prev);
+    localStorage.setItem(`smart-spend-child-name-${activeChild.child_id}`, trimmed);
+    setChildren(prev =>
+      prev.map(c => (c.child_id === activeChild.child_id ? { ...c, name: trimmed } : c))
+    );
     setIsEditingChildName(false);
   };
 
-  // Show a "no access yet" screen if loading is done and there's no data/invite
-  if (!isLoading && !sharedChild && !pendingInvite && isParentAccount === false) {
+  // Show a "no access yet" screen if loading is done and there's no data or pending invite
+  if (!isLoading && children.length === 0 && pendingInvites.length === 0 && isParentAccount === false) {
     return (
       <div className="min-h-screen text-white font-sans flex flex-col items-center justify-center gap-6 pb-8 px-4">
         <div className="w-16 h-16 rounded-2xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center">
@@ -816,19 +1089,26 @@ export function ParentDashboard() {
         </div>
         <div className="text-center max-w-sm">
           <h1 className="text-white font-bold text-xl mb-2">No Parent Access Yet</h1>
-          <p className="text-white/50 text-sm leading-relaxed">
-            This is a <strong className="text-white/70">view-only dashboard</strong> for parents.<br /><br />
-            To get started, ask your child to open <strong className="text-white/70">Settings → Parent Access</strong> and enter your email address. Once they send consent, you'll see an approval prompt here.
+          <p className="text-white/50 text-sm leading-relaxed mb-4">
+            This is a <strong className="text-white/70">multi-child parent dashboard</strong>.<br /><br />
+            To get started, ask each child to open <strong className="text-white/70">Settings → Parent Access</strong> and enter your email address. You can accept consent from multiple children and review all their expenses in one place.
           </p>
+          <button
+            onClick={handleLoadDemoChildren}
+            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-violet-500/25 transition-all flex items-center justify-center gap-2"
+          >
+            <Users size={14} />
+            <span>Load 2 Demo Children (Aarav &amp; Priya)</span>
+          </button>
         </div>
         <div className="flex items-start gap-3 p-4 rounded-2xl border border-white/8 bg-white/2 max-w-sm w-full">
           <div className="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
             <Shield size={14} className="text-emerald-400" />
           </div>
           <div className="space-y-1">
-            <p className="text-white/70 text-sm font-semibold">Child-controlled sharing</p>
+            <p className="text-white/70 text-sm font-semibold">Child-controlled consent</p>
             <p className="text-white/35 text-xs leading-relaxed">
-              Only the child can initiate sharing. Parents get a read-only view and can never edit or delete transactions.
+              Each child individually consents to share their view-only finances. You can toggle between children or view aggregated family expenses.
             </p>
           </div>
         </div>
@@ -845,13 +1125,15 @@ export function ParentDashboard() {
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="relative flex-shrink-0">
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white font-black text-sm sm:text-base shadow-md">
-                {childName !== 'Your Child' ? childName.charAt(0).toUpperCase() : (user?.avatar ?? "U")}
+                {isViewingAll ? <Users size={18} /> : childName.charAt(0).toUpperCase()}
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-emerald-400 rounded-full border-2 border-[#111113]" />
             </div>
             <div className="min-w-0">
-              <p className="text-white/40 text-[11px] sm:text-xs font-medium">Parent View</p>
-              {isEditingChildName ? (
+              <p className="text-white/40 text-[11px] sm:text-xs font-medium">
+                Parent View {children.length > 0 && `· ${children.length} Connected`}
+              </p>
+              {isEditingChildName && activeChild ? (
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <input
                     value={tempChildName}
@@ -873,20 +1155,22 @@ export function ParentDashboard() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <h1 className="text-white font-bold text-base leading-tight">
+                  <h1 className="text-white font-bold text-base leading-tight truncate">
                     {childName}&apos;s Spending
                   </h1>
-                  <button
-                    onClick={() => {
-                      setTempChildName(childName === 'Your Child' ? '' : childName);
-                      setIsEditingChildName(true);
-                    }}
-                    title="Change child's name"
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-white/50 hover:text-white text-[11px] font-medium transition-colors border border-white/10"
-                  >
-                    <Pencil size={10} />
-                    <span>{childName === 'Your Child' ? 'Set name' : 'Edit'}</span>
-                  </button>
+                  {!isViewingAll && activeChild && (
+                    <button
+                      onClick={() => {
+                        setTempChildName(activeChild.name);
+                        setIsEditingChildName(true);
+                      }}
+                      title="Rename this child"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-white/50 hover:text-white text-[11px] font-medium transition-colors border border-white/10"
+                    >
+                      <Pencil size={10} />
+                      <span>Edit</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -895,7 +1179,7 @@ export function ParentDashboard() {
           {/* Controls: Refresh & Month picker */}
           <div className="flex items-center gap-2">
             <button
-              onClick={() => void loadSharedChild()}
+              onClick={() => void loadSharedChildren()}
               disabled={isLoading}
               title="Refresh Data"
               className="p-2 rounded-xl bg-white/6 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white transition-colors disabled:opacity-50"
@@ -912,32 +1196,74 @@ export function ParentDashboard() {
                 {MONTHS[selectedMonth].slice(0, 3)} {selectedYear}
                 <ChevronDown size={13} className={`transition-transform ${monthOpen ? "rotate-180" : ""}`} />
               </button>
-            <AnimatePresence>
-              {monthOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute right-0 top-full mt-2 w-44 bg-[#1C1C1E] border border-white/10 rounded-2xl p-2 shadow-2xl z-50 grid grid-cols-3 gap-1"
-                >
-                  {MONTHS.map((m, i) => (
-                    <button
-                      key={m}
-                      onClick={() => { setSelectedMonth(i); setMonthOpen(false); }}
-                      className={`py-1.5 px-1 rounded-xl text-xs font-semibold transition-all ${
-                        i === selectedMonth ? "bg-violet-600 text-white" : "text-white/50 hover:text-white hover:bg-white/5"
-                      }`}
-                    >
-                      {m.slice(0, 3)}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
+              <AnimatePresence>
+                {monthOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 w-44 bg-[#1C1C1E] border border-white/10 rounded-2xl p-2 shadow-2xl z-50 grid grid-cols-3 gap-1"
+                  >
+                    {MONTHS.map((m, i) => (
+                      <button
+                        key={m}
+                        onClick={() => { setSelectedMonth(i); setMonthOpen(false); }}
+                        className={`py-1.5 px-1 rounded-xl text-xs font-semibold transition-all ${
+                          i === selectedMonth ? "bg-violet-600 text-white" : "text-white/50 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        {m.slice(0, 3)}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </div>
+
+        {/* Children Switcher Bar (when multiple children exist) */}
+        {children.length > 1 && (
+          <div className="flex items-center gap-2 pb-2.5 overflow-x-auto scrollbar-none">
+            <span className="text-white/40 text-[11px] font-semibold uppercase tracking-wider mr-1 flex items-center gap-1">
+              <Users size={12} /> Children:
+            </span>
+            <button
+              onClick={() => setSelectedChildId('all')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                isViewingAll
+                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/25 border border-violet-400/30'
+                  : 'bg-white/5 text-white/50 hover:text-white hover:bg-white/10 border border-white/8'
+              }`}
+            >
+              <span>All Children</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-white font-mono">
+                {children.length}
+              </span>
+            </button>
+
+            {children.map(c => {
+              const isSelected = !isViewingAll && activeChild?.child_id === c.child_id;
+              return (
+                <button
+                  key={c.child_id}
+                  onClick={() => setSelectedChildId(c.child_id)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/25 border border-violet-400/30'
+                      : 'bg-white/5 text-white/50 hover:text-white hover:bg-white/10 border border-white/8'
+                  }`}
+                >
+                  <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px] text-white">
+                    {c.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span>{c.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-1 pb-3 overflow-x-auto scrollbar-none">
@@ -962,28 +1288,78 @@ export function ParentDashboard() {
         </div>
       </div>
 
-      {/* Consent banner */}
-      {pendingInvite && (
-        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 mb-4">
-          <p className="text-amber-200 text-sm">A child has invited this account to view their spending.</p>
-          <button
-            onClick={approveInvite}
-            disabled={isLoading}
-            className="px-3 py-2 rounded-xl bg-amber-400 text-black text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? 'Approving…' : 'Approve'}
-          </button>
-        </div>
+      {/* Multiple Children Consent Center */}
+      {pendingInvites.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border border-amber-500/30 p-4 mb-5 shadow-lg shadow-amber-500/5 space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-300">
+                <Bell size={16} />
+              </div>
+              <div>
+                <p className="text-amber-200 text-sm font-bold">
+                  {pendingInvites.length === 1
+                    ? '1 Child Consent Request Pending'
+                    : `${pendingInvites.length} Children Consent Requests Pending`}
+                </p>
+                <p className="text-white/45 text-xs">
+                  Review and accept consent to view their spending and budgets
+                </p>
+              </div>
+            </div>
+            {pendingInvites.length > 1 && (
+              <button
+                onClick={approveAllInvites}
+                disabled={isLoading}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold transition-all disabled:opacity-50"
+              >
+                Approve All ({pendingInvites.length})
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+            {pendingInvites.map(invite => (
+              <div
+                key={invite.id}
+                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-black/25 border border-white/5"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-amber-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                    {invite.child_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-white text-xs font-semibold truncate">{invite.child_name}</p>
+                    <p className="text-white/35 text-[11px] truncate">Requested financial sharing</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => approveInvite(invite.id)}
+                  disabled={isLoading}
+                  className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold transition-all disabled:opacity-50 flex-shrink-0"
+                >
+                  Approve
+                </button>
+              </div>
+            ))}
+          </div>
+        </motion.div>
       )}
-      {isLoading && !pendingInvite && (
+
+      {isLoading && pendingInvites.length === 0 && (
         <div className="flex items-center gap-2 mb-4 text-white/50 text-sm">
           <svg className="animate-spin w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
           </svg>
-          Loading child data…
+          Loading children data…
         </div>
       )}
+
       {accessMessage && (
         <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 mb-4 text-xs text-amber-300">
           <div className="flex items-center gap-2">
@@ -991,7 +1367,7 @@ export function ParentDashboard() {
             <span>{accessMessage}</span>
           </div>
           <button
-            onClick={() => void loadSharedChild()}
+            onClick={() => void loadSharedChildren()}
             disabled={isLoading}
             className="px-3 py-1.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 border border-amber-400/30 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 transition-colors"
           >
@@ -1000,23 +1376,32 @@ export function ParentDashboard() {
           </button>
         </div>
       )}
-      {sharedChild && (
+
+      {children.length > 0 && (
         <motion.div variants={ITEM} initial="hidden" animate="show"
-          className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 mb-4"
+          className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 mb-4"
         >
-          <BadgeCheck size={18} className="text-emerald-400 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-emerald-300 text-sm font-semibold">Access Approved by {childName}</p>
-            <p className="text-emerald-400/60 text-xs">View-only · {childName} can revoke access anytime from Settings</p>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <BadgeCheck size={18} className="text-emerald-400 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-emerald-300 text-sm font-semibold truncate">
+                {isViewingAll ? `Viewing All ${children.length} Consented Children` : `Access Approved by ${childName}`}
+              </p>
+              <p className="text-emerald-400/60 text-xs">
+                View-only · Children can revoke access anytime from Settings
+              </p>
+            </div>
           </div>
-          <Shield size={14} className="text-emerald-400/50 flex-shrink-0" />
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Shield size={14} className="text-emerald-400/50" />
+          </div>
         </motion.div>
       )}
 
       {/* Tab content */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={activeTab}
+          key={`${activeTab}-${selectedChildId}`}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
@@ -1032,6 +1417,8 @@ export function ParentDashboard() {
               totalIncome={totalIncome}
               totalBudget={totalBudget}
               childName={childName}
+              childrenSummaries={childrenSummaries}
+              onSelectChild={id => setSelectedChildId(id)}
             />
           )}
           {activeTab === "expenses" && (
@@ -1039,6 +1426,7 @@ export function ParentDashboard() {
               transactions={monthTransactions}
               childName={childName}
               monthLabel={MONTHS[selectedMonth]}
+              isViewingAll={isViewingAll}
             />
           )}
           {activeTab === "budgets" && (
@@ -1068,16 +1456,17 @@ export function ParentDashboard() {
           <Shield size={14} className="text-emerald-400" />
         </div>
         <div className="space-y-1">
-          <p className="text-white/70 text-sm font-semibold">Privacy &amp; Consent</p>
+          <p className="text-white/70 text-sm font-semibold">Privacy &amp; Child Consent</p>
           <p className="text-white/35 text-xs leading-relaxed">
             You are viewing spending information that <strong className="text-white/55">{childName} has chosen to share</strong> with you. This is a read-only view. SmartSpend never allows parents to edit, delete, or control the child account.
           </p>
           <div className="flex items-center gap-1.5 pt-1">
             <CheckCircle2 size={12} className="text-emerald-400" />
-            <span className="text-emerald-400 text-xs font-medium">Access consented on 1 Sep 2026</span>
+            <span className="text-emerald-400 text-xs font-medium">Child-consented access active</span>
           </div>
         </div>
       </div>
     </div>
   );
 }
+
