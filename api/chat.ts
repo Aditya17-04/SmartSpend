@@ -16,6 +16,8 @@ interface GroqResponse {
 const environment = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'qwen/qwen3.8-27b';
+// Keep well under the free on-demand OTPM limit of 1 000 tokens/min.
+const MAX_TOKENS = 800;
 
 async function requestGroq(apiKey: string, prompt: string) {
   const controller = new AbortController();
@@ -31,6 +33,7 @@ async function requestGroq(apiKey: string, prompt: string) {
       body: JSON.stringify({
         model: GROQ_MODEL,
         messages: [{ role: 'user', content: prompt }],
+        max_tokens: MAX_TOKENS,
       }),
       signal: controller.signal,
     });
@@ -62,7 +65,9 @@ export default async function handler(req: ChatRequest, res: ChatResponse) {
     let response = await requestGroq(apiKey, prompt);
     let data = await response.json() as GroqResponse;
 
-    if (!response.ok && response.status >= 500) {
+    // Retry once on 5xx server errors or 429 rate-limit (wait 2 s).
+    if (!response.ok && (response.status >= 500 || response.status === 429)) {
+      await new Promise(r => setTimeout(r, response.status === 429 ? 2000 : 500));
       response = await requestGroq(apiKey, prompt);
       data = await response.json() as GroqResponse;
     }

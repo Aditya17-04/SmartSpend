@@ -198,14 +198,41 @@ function buildReply(query: string, snap: FinSnap): { blocks: ContentBlock[]; chi
   };
 }
 
+/** Minimal snapshot sent to the AI — avoids blowing the OTPM limit. */
+function buildAIContext(snap: FinSnap) {
+  const monthTx = snap.transactions
+    .filter(t => isThisMonth(t.date))
+    .slice(0, 20) // cap at 20 recent transactions
+    .map(t => ({ date: t.date, type: t.type, category: t.category, amount: t.amount, note: t.note }));
+
+  return {
+    thisMonthSpent: snap.thisMonthSpent,
+    thisMonthIncome: snap.thisMonthIncome,
+    totalBalance: snap.totalBalance,
+    effectiveBudget: snap.effectiveBudget,
+    recentTransactions: monthTx,
+    topCategories: catMap(snap.transactions.filter(t => isThisMonth(t.date))).slice(0, 5),
+    budgets: snap.budgets.map(b => ({ category: b.category, limit: b.limit, spent: b.spent })),
+  };
+}
+
 async function geminiReply(query: string, snap: FinSnap): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   let res: Response;
   try {
+    const context = buildAIContext(snap);
     res = await fetch('/api/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: ['You are SmartSpend AI — a warm, concise personal finance assistant for Indian users.', 'IMPORTANT: Always use ₹ (Indian Rupee symbol) for ALL currency values. Never use $ or USD.', 'Reply in 2–4 sentences or clean bullet points using only the supplied data.', `Question: ${query}`, `Data: ${JSON.stringify(snap)}`].join('\n\n') }),
+      body: JSON.stringify({
+        prompt: [
+          'You are SmartSpend AI — a warm, concise personal finance assistant for Indian users.',
+          'IMPORTANT: Always use ₹ (Indian Rupee symbol) for ALL currency values. Never use $ or USD.',
+          'Reply in 2–4 sentences or clean bullet points. Be brief — max 150 words.',
+          `Question: ${query}`,
+          `Data: ${JSON.stringify(context)}`,
+        ].join('\n\n'),
+      }),
       signal: controller.signal,
     });
   } finally {
