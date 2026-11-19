@@ -2,9 +2,12 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
-function groqChatProxy(apiKey: string) {
+function geminiChatProxy(apiKey: string) {
+  const GEMINI_MODEL = 'gemini-2.0-flash'
+  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
+
   return {
-    name: 'groq-chat-proxy',
+    name: 'gemini-chat-proxy',
     configureServer(server: { middlewares: { use: (handler: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void } }) {
       server.middlewares.use(async (req, res, next) => {
         if (req.method !== 'POST' || req.url !== '/api/chat') {
@@ -20,30 +23,31 @@ function groqChatProxy(apiKey: string) {
           if (!apiKey) {
             res.statusCode = 500
             res.setHeader('Content-Type', 'application/json')
-            res.end(JSON.stringify({ error: 'GROQ_API_KEY is not configured.' }))
+            res.end(JSON.stringify({ error: 'GEMINI_API_KEY is not configured.' }))
             return
           }
 
-          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`,
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model: 'qwen/qwen3.8-27b',
-              messages: [{ role: 'user', content: body.prompt ?? '' }],
+              contents: [{ parts: [{ text: body.prompt ?? '' }] }],
+              generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
             }),
           })
-          const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } }
-          if (!response.ok) throw new Error(data.error?.message ?? 'Groq request failed')
+          const data = await response.json() as {
+            candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+            error?: { message?: string }
+          }
+          if (!response.ok) throw new Error(data.error?.message ?? 'Gemini request failed')
 
+          const answer = data.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Gemini returned no answer.'
           res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ answer: data.choices?.[0]?.message?.content ?? 'Groq returned no answer.' }))
+          res.end(JSON.stringify({ answer }))
         } catch (error) {
           res.statusCode = 502
           res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Groq request failed' }))
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Gemini request failed' }))
         }
       })
     },
@@ -59,7 +63,7 @@ export default defineConfig(({ mode }) => {
     react({
       jsxRuntime: 'automatic',
     }),
-    groqChatProxy(env.GROQ_API_KEY),
+    geminiChatProxy(env.GEMINI_API_KEY),
   ],
   server: {
     port: 4000,
