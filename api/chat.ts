@@ -8,32 +8,32 @@ interface ChatResponse {
   json: (body: unknown) => void;
 }
 
-interface GroqResponse {
-  choices?: Array<{ message?: { content?: string } }>;
-  error?: { message?: string };
+interface GeminiResponse {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+    finishReason?: string;
+  }>;
+  error?: { message?: string; code?: number };
 }
 
 const environment = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'qwen/qwen3.8-27b';
-// Keep well under the free on-demand OTPM limit of 1 000 tokens/min.
-const MAX_TOKENS = 800;
+const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-async function requestGroq(apiKey: string, prompt: string) {
+async function requestGemini(apiKey: string, prompt: string) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    return await fetch(GROQ_URL, {
+    return await fetch(`${GEMINI_URL}?key=${apiKey}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: MAX_TOKENS,
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 800,
+          temperature: 0.7,
+        },
       }),
       signal: controller.signal,
     });
@@ -48,9 +48,9 @@ export default async function handler(req: ChatRequest, res: ChatResponse) {
     return;
   }
 
-  const apiKey = environment?.GROQ_API_KEY;
+  const apiKey = environment?.GEMINI_API_KEY;
   if (!apiKey) {
-    res.status(500).json({ error: 'GROQ_API_KEY is not configured.' });
+    res.status(500).json({ error: 'GEMINI_API_KEY is not configured.' });
     return;
   }
 
@@ -62,25 +62,26 @@ export default async function handler(req: ChatRequest, res: ChatResponse) {
   }
 
   try {
-    let response = await requestGroq(apiKey, prompt);
-    let data = await response.json() as GroqResponse;
+    let response = await requestGemini(apiKey, prompt);
+    let data = await response.json() as GeminiResponse;
 
-    // Retry once on 5xx server errors or 429 rate-limit (wait 2 s).
+    // Retry once on 5xx or 429 rate-limit (wait 2 s).
     if (!response.ok && (response.status >= 500 || response.status === 429)) {
       await new Promise(r => setTimeout(r, response.status === 429 ? 2000 : 500));
-      response = await requestGroq(apiKey, prompt);
-      data = await response.json() as GroqResponse;
+      response = await requestGemini(apiKey, prompt);
+      data = await response.json() as GeminiResponse;
     }
 
     if (!response.ok) {
-      console.error('Groq request failed', { status: response.status, message: data.error?.message });
-      res.status(502).json({ error: data.error?.message ?? 'Groq request failed' });
+      console.error('Gemini request failed', { status: response.status, message: data.error?.message });
+      res.status(502).json({ error: data.error?.message ?? 'Gemini request failed' });
       return;
     }
 
-    res.status(200).json({ answer: data.choices?.[0]?.message?.content ?? 'Groq returned no answer.' });
+    const answer = data.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Gemini returned no answer.';
+    res.status(200).json({ answer });
   } catch (error) {
-    console.error('Groq request error', error);
-    res.status(502).json({ error: error instanceof Error ? error.message : 'Groq request failed' });
+    console.error('Gemini request error', error);
+    res.status(502).json({ error: error instanceof Error ? error.message : 'Gemini request failed' });
   }
 }
